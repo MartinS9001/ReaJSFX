@@ -33,22 +33,20 @@ prev1 = 0.0;
 
 PI = 3.14;
 
-function LowPass(x, prevx, alfa)
-(
-  x = alfa * prevx + (1 - alfa)*x;
-  prevx = x;
-);
 
 @slider
 freq = slider1;
 
 
-alfa = 2*PI*freq/srate;
+alfa = exp(-2*PI*freq/srate);
 
 
 @sample  
 
-spl0 = LowPass(spl0, prev0, alfa);
-spl1 = LowPass(spl1, prev1, alfa);
+spl0 = alfa*prev0 + (1-alfa)*spl0;
+spl1 = alfa*prev1 + (1-alfa)*spl1;
+
+prev0 = spl0;
+prev1 = spl1;
 
 
