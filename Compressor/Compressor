@@ -35,6 +35,7 @@ out_pin:right output
 @init
 prev0 = 0;
 prev1 = 10^(-6);
+nl = 1.5;
 
 function tanh(x)
   instance(x2)
@@ -106,8 +107,11 @@ c_dB0 = M + y_T0;
 
 gain0 = 10^(c_dB0/20);
 
-spl0 = spl0 * gain0;
-spl1 = spl1 * gain0;
+//spl0 = spl0 * gain0;
+//spl1 = spl1 * gain0;
+
+spl0 = tanh(spl0 * gain0*nl)/nl;
+spl1 = tanh(spl1 * gain0*nl)/nl;
 
 
 prev0 = y_T0;
