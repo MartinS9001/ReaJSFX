@@ -15,15 +15,6 @@
 version: 1.0.0
 desc: Compressor
 author: Marcin Sobczak
-about:
-  # MartinS9001 ReaJSFX
-  Simple compressor
-
-
-
-
-//tags: Commpressor
-//author: Marcin Sobczak
 
 slider1:-.1<-50,-.1,.1> Treshold
 slider2:1<1,40,.1>Ratio
