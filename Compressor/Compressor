@@ -12,8 +12,14 @@
 // PLUG-IN YOU RELINQUISH YOUR CLAIM TO SUE IT'S AUTHOR, AS WELL AS THE CLAIM TO
 // ENTRUST SOMEBODY ELSE WITH DOING SO.
 
-
+version: 1.0.0
 desc: Compressor
+author: Marcin Sobczak
+about:
+  # MartinS9001 ReaJSFX
+  Simple compressor
+
+
 
 
 //tags: Commpressor
