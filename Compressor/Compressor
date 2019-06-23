@@ -1,10 +1,10 @@
+version: 1.0.0
 desc: Simple Compressor
 author: Marcin Sobczak
-version: 1.0
+about: Compressor with saturation in the output
 changelog: Initial release
-provides: Simple compressor/*
 link: hypeaudio.net
-about: This is a simple compressor with attack and release controlls and some saturation at the output
+
 
 //Author: Marcin Sobczak 2019
 
