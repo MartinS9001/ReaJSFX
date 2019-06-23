@@ -1,0 +1,125 @@
+// (C) 2019, Marcin Sobczak. Saturation plugin "Grinder"
+
+// NO WARRANTY IS GRANTED. THIS PLUG-IN IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+// WARRANTY OF ANY KIND. NO LIABILITY IS GRANTED, INCLUDING, BUT NOT LIMITED TO,
+// ANY DIRECT OR INDIRECT,  SPECIAL,  INCIDENTAL OR CONSEQUENTIAL DAMAGE ARISING
+// OUT OF  THE  USE  OR INABILITY  TO  USE  THIS PLUG-IN,  COMPUTER FAILTURE  OF
+// MALFUNCTION INCLUDED.  THE USE OF THE SOURCE CODE,  EITHER  PARTIALLY  OR  IN
+// TOTAL, IS ONLY GRANTED,  IF USED IN THE SENSE OF THE AUTHOR'S INTENTION,  AND
+// USED WITH ACKNOWLEDGEMENT OF THE AUTHOR. FURTHERMORE IS THIS PLUG-IN A  THIRD
+// PARTY CONTRIBUTION,  EVEN IF INCLUDED IN REAPER(TM),  COCKOS INCORPORATED  OR
+// ITS AFFILIATES HAVE NOTHING TO DO WITH IT.  LAST BUT NOT LEAST, BY USING THIS
+// PLUG-IN YOU RELINQUISH YOUR CLAIM TO SUE IT'S AUTHOR, AS WELL AS THE CLAIM TO
+// ENTRUST SOMEBODY ELSE WITH DOING SO.
+
+// Further more is this released under the GPL License:
+// http://www.gnu.org/licenses/gpl.html
+
+version: 1.0.0
+desc: MCompressor
+author: Marcin Sobczak
+about: 
+	#Saturating Compressor
+	Feedforward compressor with saturation
+changelog: Initial release
+link: hypeaudio.net
+
+
+//Author: Marcin Sobczak 2019
+
+slider1:-.1<-50,-.1,.1> Treshold
+slider2:1<1,40,.1>Ratio
+slider3:5<1,50,.1> Attack
+slider4:15<1,150,.1> Release
+slider5:0<0,24,1> Knee Width
+slider6:0<0,24,1> Make Up Gain
+
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+prev0 = 0;
+prev1 = 10^(-6);
+nl = 1.5;
+
+function tanh(x)
+  instance(x2)
+(
+  x = min(max(x,-1.13894395),1.13894395);
+  x2 = x * x;
+  x*(1 - x2*(0.3333333333 - x2*(0.1333333333 - x2*0.053968254)));
+);
+
+@slider
+T = slider1;
+ratio = slider2;
+tauA = slider3;
+tauR = slider4;
+W = slider5;
+M = slider6;
+
+
+@sample  
+
+
+//defining x as input
+x0 = spl0;
+
+//level detection
+y_L0 = max(abs(x0), 10^(-6));
+
+//decibel conversion
+x_dB0 = y_L0;
+y_dB0 = 20*log10(x_dB0);
+x_G0 = y_dB0;
+
+//gain calculation
+slope = 1/ratio - 1;// Feedforward
+overshoot0 = x_G0 - T;
+
+overshoot0 <= -W/2 ? (
+  y_G0 = x_G0;
+);
+
+((overshoot0 > -W/2) && (overshoot0 < W/2)) ? (
+  y_G0 = x_G0 +  slope * ((overshoot0 + W/2))^2 / (2*W);
+);
+ 
+overshoot0 >= W/2 ? (
+  y_G0 = x_G0 + slope*overshoot0;
+);
+
+x_T0 = y_G0 - x_G0;
+
+// attack & release
+alfaA = exp(-1/(tauA*srate/1000));
+alfaR = exp(-1/(tauR*srate/1000));
+
+
+//selecting attack phase or release phase
+
+y_T0 = x_T0;
+
+
+x_T0 > prev0 ? (
+  y_T0 = alfaR * prev0 + (1.0 - alfaR) * x_T0;
+) : (
+  y_T0 = alfaA * prev0 + (1.0 - alfaA) * x_T0;
+);
+
+
+c_dB0 = M + y_T0;
+
+gain0 = 10^(c_dB0/20);
+
+//spl0 = spl0 * gain0;
+//spl1 = spl1 * gain0;
+
+spl0 = tanh(spl0 * gain0*nl)/nl;
+spl1 = tanh(spl1 * gain0*nl)/nl;
+
+
+prev0 = y_T0;
