@@ -1,2 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX"/>
+<index version="1" name="Marcins JSFX" commit="2550cdbabdfdce70b65c1381aa55e84c12ed0e37">
+  <category name="Compressor">
+    <reapack name="Compressor.jsfx" type="effect" desc="MCompressor">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 #Saturating Compressor Feedforward compressor with saturation\par}
+}
+]]></description>
+        <link rel="website">http://www.hypeaudio.net/</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2019-06-23T10:42:25Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/2550cdbabdfdce70b65c1381aa55e84c12ed0e37/Compressor/Compressor.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Grinder">
+    <reapack name="Grinder.jsfx" type="effect" desc="Grinder saturation plugin">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 #Grinder saturation From gentle harmonics to fat saturation\par}
+}
+]]></description>
+        <link rel="website">http://www.hypeaudio.net/</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2019-06-23T10:42:25Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/2550cdbabdfdce70b65c1381aa55e84c12ed0e37/Grinder/Grinder.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="LowPassFilter">
+    <reapack name="LPF.jsfx" type="effect" desc="Simple Low pass filter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 #Low Pass Filter\par}
+}
+]]></description>
+        <link rel="website">http://www.hypeaudio.net/</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2019-06-23T10:42:25Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/2550cdbabdfdce70b65c1381aa55e84c12ed0e37/LowPassFilter/LPF.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+</index>
