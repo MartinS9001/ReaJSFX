@@ -12,9 +12,9 @@
 // PLUG-IN YOU RELINQUISH YOUR CLAIM TO SUE IT'S AUTHOR, AS WELL AS THE CLAIM TO
 // ENTRUST SOMEBODY ELSE WITH DOING SO.
 
-version: 1.0.0
-desc: Compressor
-author: Marcin Sobczak
+Version: 1.0
+Desc: Compressor
+Author: Marcin Sobczak
 
 slider1:-.1<-50,-.1,.1> Treshold
 slider2:1<1,40,.1>Ratio
