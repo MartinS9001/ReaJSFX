@@ -1,3 +1,12 @@
+version: 1.0.0
+desc: Simple Low pass filter
+author: Marcin Sobczak
+about: 
+	#Low Pass Filter
+changelog: Initial release
+link: hypeaudio.net
+
+
 // (C) 2019, Marcin Sobczak. Saturation plugin "Grinder"
 
 // NO WARRANTY IS GRANTED. THIS PLUG-IN IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
@@ -16,13 +25,7 @@
 // http://www.gnu.org/licenses/gpl.html
 
 
-version: 1.0.0
-desc: Simple Low pass filter
-author: Marcin Sobczak
-about: 
-	#Low Pass Filter
-changelog: Initial release
-link: hypeaudio.net
+
 
 slider1:12000<20,20000,1> Cutoff Frequency
 

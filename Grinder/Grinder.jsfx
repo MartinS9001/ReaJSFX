@@ -1,3 +1,13 @@
+version: 1.0.0
+desc: Grinder saturation plugin
+author: Marcin Sobczak
+about: 
+	#Grinder saturation
+	From gentle harmonics to fat saturation
+changelog: Initial release
+link: hypeaudio.net
+
+
 // (C) 2019, Marcin Sobczak. Saturation plugin "Grinder"
 
 // NO WARRANTY IS GRANTED. THIS PLUG-IN IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
@@ -16,14 +26,7 @@
 // http://www.gnu.org/licenses/gpl.html
 
 
-version: 1.0.0
-desc: Grinder saturation plugin
-author: Marcin Sobczak
-about: 
-	#Grinder saturation
-	From gentle harmonics to fat saturation
-changelog: Initial release
-link: hypeaudio.net
+
 
 
 //author: Marcin Sobczak
