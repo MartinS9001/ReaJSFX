@@ -1,0 +1,88 @@
+version: 1.0.0
+desc: Allpass filter
+author: Marcin Sobczak
+about: 
+	#Allpass filter
+	Allpass filter y(n) = a*x(n) + x(n-D) - b*y(n-D)
+changelog: Initial release
+link: http://www.hypeaudio.net/
+
+
+// (C) 2019, Marcin Sobczak. Allpass filter
+
+// NO WARRANTY IS GRANTED. THIS PLUG-IN IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+// WARRANTY OF ANY KIND. NO LIABILITY IS GRANTED, INCLUDING, BUT NOT LIMITED TO,
+// ANY DIRECT OR INDIRECT,  SPECIAL,  INCIDENTAL OR CONSEQUENTIAL DAMAGE ARISING
+// OUT OF  THE  USE  OR INABILITY  TO  USE  THIS PLUG-IN,  COMPUTER FAILTURE  OF
+// MALFUNCTION INCLUDED.  THE USE OF THE SOURCE CODE,  EITHER  PARTIALLY  OR  IN
+// TOTAL, IS ONLY GRANTED,  IF USED IN THE SENSE OF THE AUTHOR'S INTENTION,  AND
+// USED WITH ACKNOWLEDGEMENT OF THE AUTHOR. FURTHERMORE IS THIS PLUG-IN A  THIRD
+// PARTY CONTRIBUTION,  EVEN IF INCLUDED IN REAPER(TM),  COCKOS INCORPORATED  OR
+// ITS AFFILIATES HAVE NOTHING TO DO WITH IT.  LAST BUT NOT LEAST, BY USING THIS
+// PLUG-IN YOU RELINQUISH YOUR CLAIM TO SUE IT'S AUTHOR, AS WELL AS THE CLAIM TO
+// ENTRUST SOMEBODY ELSE WITH DOING SO.
+
+// Further more is this released under the GPL License:
+// http://www.gnu.org/licenses/gpl.html
+
+
+
+//Author: Marcin Sobczak 2019
+slider1:2000<500,10000,1> delay D
+
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+rIndex = 0;
+
+@slider
+
+maxDelay = slider1;
+bX0[maxDelay];
+bY0[maxDelay];
+
+bX1[maxDelay];
+bY1[maxDelay];
+
+//coefficients
+a = 0.3;
+b = 0.3;
+
+
+i = 0;
+while(i<maxDelay)
+(
+  bX0[i] = 0.0;
+  bY0[i] = 0.0;
+ 
+  bX1[i] = 0.0;
+  bY1[i] = 0.0;
+  i = i +1;
+);
+
+@sample
+
+//y(n) = b_0 x(n) + x(n-M) - a_M y(n-M)
+
+rIndex >= (maxDelay -1) ? (rIndex = 0;);
+
+y0 = a*spl0 + bX0[rIndex] - b*bY0[rIndex];
+y1 = a*spl1 + bX1[rIndex] - b*bY1[rIndex];
+
+bX0[rIndex] = spl0;
+bY0[rIndex] = y0;
+
+bX1[rIndex] = spl1;
+bY1[rIndex] = y1;
+
+
+spl0 = y0;
+spl1 = y1;
+//spl0 = 0;
+//spl1 = 0;
+
+rIndex = rIndex+1;
