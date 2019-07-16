@@ -1,5 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX" commit="2550cdbabdfdce70b65c1381aa55e84c12ed0e37">
+<index version="1" name="Marcins JSFX" commit="957257a5ffd8c0bd5e12fb0a7a8e60b862402be5">
+  <category name="Allpass">
+    <reapack name="Allpass.jsfx" type="effect" desc="Allpass filter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 #Allpass filter Allpass filter y(n) = a{\i x(n) + x(n-D) - b}y(n-D)\par}
+}
+]]></description>
+        <link rel="website">http://www.hypeaudio.net/</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2019-07-02T21:01:35Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/957257a5ffd8c0bd5e12fb0a7a8e60b862402be5/Allpass/Allpass.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Combfilter">
+    <reapack name="Combfilter.jsfx" type="effect" desc="Combfilter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 #Combfilter Combfilter y(n) = a{\i x(n) + b}x(n - D) + c*y(n-D)\par}
+}
+]]></description>
+        <link rel="website">http://www.hypeaudio.net/</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2019-07-02T21:01:35Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/957257a5ffd8c0bd5e12fb0a7a8e60b862402be5/Combfilter/Combfilter.jsfx</source>
+      </version>
+    </reapack>
+  </category>
   <category name="Compressor">
     <reapack name="Compressor.jsfx" type="effect" desc="MCompressor">
       <metadata>
