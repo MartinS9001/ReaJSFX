@@ -31,12 +31,13 @@ link:
 
 //author: Marcin Sobczak
 
-slider1:60<1, 400, 1> Frequency
-slider2:1<1,20,0.1>Saturation
-slider3:1<0,1,1{Tanh, Hyperbolic}>Flavour
-slider4:0<0,2,1{Low, Medium, High}>Distortion
-slider5:1<0, 1, 0.1> Dry Gain
-slider6:1<0, 1, 0.1> Wet Gain
+slider1:0.01<0, 0.99, 0.01> Cutoff
+slider2:0.01<0, 0.90, 0.01> Resonance
+slider3:1<1,20,0.1>Saturation
+slider4:1<0,1,1{Tanh, Hyperbolic}>Flavour
+slider5:0<0,2,1{Low, Medium, High}>Distortion
+slider6:1<0, 1, 0.1> Dry Gain
+slider7:1<0, 1, 0.1> Wet Gain
 
 in_pin:left input
 in_pin:right input
@@ -54,13 +55,18 @@ prevXhpf1 = 0.0;
 prevYhpf0 = 0.0;
 prevYhpf1 = 0.0;
 
+buf0 = 0.0;
+buf1 = 0.0;
+
 PI = 3.14;
 
 //y[i] := y[i-1] + α * (x[i] - y[i-1])
-function lpf(x, freq, prevY)
+function lpf(x, freq, res,  prevY)
 (
-	alfa = exp(-2*PI*freq/srate);
-	x = (2*alfa - 1) * (2*alfa - 1) * (2*alfa - 1) * (alfa*prevY + (1-alfa) * x);
+	feedbackAmount = res + res/(1.0 - freq);
+	buf0 += freq * (x - buf0 + feedbackAmount * (buf0 - buf1));
+	buf1 += freq * (buf0 - buf1)
+	//x = (2*alfa - 1) * (2*alfa - 1) * (2*alfa - 1) * (alfa*prevY + (1-alfa) * x);
 	 
 );
 
@@ -68,7 +74,7 @@ function lpf(x, freq, prevY)
 //y[i] := α × (y[i−1] + x[i] − x[i−1])
 function hpf(x, freq, prevX, prevY)
 (
-	alfa = exp(-2*PI*freq/srate);
+	alfa = 2*freq / srate; //exp(-2*PI*freq/srate);
 	x = alfa*prevY + alfa*x - alfa*prevX;
 	
 	prev2X = x;
@@ -82,6 +88,13 @@ function hpf(x, freq, prevX, prevY)
 	x = alfa*prev3Y + alfa*x - alfa*prev3X;
 	
 );
+//feedbackAmount = resonance + resonance/(1.0 - cutoff);
+/*buf0 += cutoff * (inputValue - buf0 + feedbackAmount * (buf0 - buf1));
+buf0 += cutoff * (inputValue - buf0);
+buf1 += cutoff * (buf0 - buf1);
+
+*/
+
 
 
 function tanh(x)
@@ -101,14 +114,15 @@ function hyper(x)
 @slider
 
 freq = slider1;
-sat = slider2;
-flav = slider3;
+res = slider2;
+sat = slider3;
+flav = slider4;
 dist = 1;
-slider4 == 0 ? (dist =1);
-slider4 == 1 ? (dist =4);
-slider4 == 2 ? (dist =25);
-dGain = slider5;
-wGain = slider6;
+slider5 == 0 ? (dist =1);
+slider5 == 1 ? (dist =4);
+slider5 == 2 ? (dist =25);
+dGain = slider6;
+wGain = slider7;
 
 
 @sample
@@ -118,7 +132,7 @@ flav == 0  ?(
 	lpfStage0 = lpf(spl0, freq, prevYlpf0);
 	lpfStage1 = lpf(spl1, freq, prevYlpf1);
 	
-	
+	/*
 	satStage0 = tanh(lpfStage0 * sat * dist);
 	satStage1 = tanh(lpfStage1 * sat * dist);
 	
@@ -126,10 +140,10 @@ flav == 0  ?(
 	hpfStage1 = hpf(satStage1, freq, prevXhpf1, prevYhpf1);
 	
 	spl0 = spl0 * dGain + hpfStage0 * wGain;
-	spl1 = spl1 * dGain + hpfStage1 * wGain;
+	spl1 = spl1 * dGain + hpfStage1 * wGain;*/
 	
-	//spl0 = lpfStage0;
-	//spl1 = lpfStage1;
+	spl0 = lpfStage0;
+	spl1 = lpfStage1;
  
 	
 	prevYlpf0 = lpfStage0;
