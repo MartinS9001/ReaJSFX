@@ -30,7 +30,7 @@ link: http://www.hypeaudio.net/
 //Author: Marcin Sobczak 2019
 
 slider1:-.1<-50,-.1,.1> Treshold
-slider2:1<1,40,.1>Ratio
+slider2:1<1,80,.1>Ratio
 slider3:5<1,50,.1> Attack
 slider4:15<1,150,.1> Release
 slider5:0<0,24,1> Knee Width
@@ -125,3 +125,26 @@ spl1 = tanh(spl1 * gain0*nl)/nl;
 
 
 prev0 = y_T0;
+
+@gfx 600 400
+// Set background to black
+gfx_r = 0;
+gfx_g = 0;
+gfx_b = 0;
+gfx_a = 1;
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+// Set text color to white ~80%
+gfx_r = 0.8;
+gfx_g = 0.8;
+gfx_b = 0.8;
+gfx_a = 0.8;
+
+// Draw title
+gfx_setfont(1, "Arial", 24);
+gfx_x = 20;
+gfx_y = 20;
+gfx_drawstr("SQUASHER");
+
+// Smaller font for sliders
+gfx_setfont(1, "Arial", 14);

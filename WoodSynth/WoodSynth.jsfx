@@ -1,0 +1,341 @@
+desc: Wood Impact Physical Model Synth
+// Physical modeling synth for wooden percussion sounds
+// Responds to MIDI note-on messages
+
+slider1:0.5<0,1,0.01>-Wood Density
+slider2:0.5<0,1,0.01>-Wood Size
+slider3:0.3<0,1,0.01>-Damping
+slider4:0.5<0,1,0.01>-Exciter Mass
+slider5:0.7<0,1,0.01>-Impact Velocity
+slider6:0.5<0,1,0.01>-Brightness
+slider7:0.5<0,1,0.01>-Resonance
+
+@init
+sr = srate;
+
+// Delay line for resonator (Karplus-Strong style)
+max_delay = 4000;
+delay_line = 0;
+ptr = delay_line + max_delay;
+
+// Clear delay line
+memset(delay_line, 0, max_delay);
+
+delay_pos = 0;
+delay_length = 100;
+
+// Exciter state
+exciter_vel = 0;
+exciter_pos = 0;
+exciter_active = 0;
+exciter_time = 0;
+
+// Filter states for damping
+filt_state = 0;
+bright_filt_state = 0;
+
+// Output state
+out_env = 0;
+decay_rate = 0.9995;
+
+// Multiple resonant modes (like real wood)
+mode1_phase = 0;
+mode2_phase = 0;
+mode3_phase = 0;
+
+// Function to recalculate all parameters from sliders
+function update_params()
+(
+  wood_density = slider1;
+  wood_size = slider2;
+  damping = slider3;
+  exciter_mass = slider4;
+  impact_velocity = slider5;
+  brightness = slider6;
+  resonance_mix = slider7;
+
+  // Calculate damping coefficient
+  damp_coef = 0.5 + damping * 0.49;
+  damp_inv = 1.0 - damp_coef;
+
+  // Brightness affects filter cutoff
+  bright_coef = brightness;
+  bright_inv = 1.0 - bright_coef;
+
+  // Mass affects excitation duration and spectrum
+  mass_factor = 0.1 + exciter_mass * 0.9;
+  exciter_duration = floor(5 + exciter_mass * 50);
+);
+
+@slider
+update_params();
+
+@block
+while (midirecv(offset, msg1, msg2, msg3)) (
+  status = msg1 & 0xF0;
+  
+  // Note On
+  status == 0x90 && msg3 > 0 ? (
+    note = msg2;
+    velocity = msg3 / 127;
+    
+    // Calculate fundamental frequency from MIDI note
+    freq = 440 * pow(2, (note - 69) / 12);
+    
+    // Adjust frequency based on wood size
+    freq_scaled = freq * (0.5 + wood_size * 1.5);
+    
+    // Calculate delay length
+    delay_length = floor(sr / freq_scaled);
+    delay_length = max(10, min(delay_length, max_delay - 1));
+    
+    // Modal frequencies (wood has multiple resonant modes)
+    mode1_freq = freq_scaled;
+    mode2_freq = freq_scaled * 2.73; // Inharmonic ratio
+    mode3_freq = freq_scaled * 5.17;
+    
+    mode1_inc = 2 * $pi * mode1_freq / sr;
+    mode2_inc = 2 * $pi * mode2_freq / sr;
+    mode3_inc = 2 * $pi * mode3_freq / sr;
+    
+    // Reset phases
+    mode1_phase = 0;
+    mode2_phase = 0;
+    mode3_phase = 0;
+    
+    // Initialize exciter
+    exciter_vel = velocity * impact_velocity * mass_factor * 2;
+    exciter_pos = 0;
+    exciter_active = 1;
+    exciter_time = 0;
+    
+    // Fill delay line with initial excitation burst
+    i = 0;
+    loop(delay_length,
+      // Generate noise burst shaped by exciter properties
+      noise = (rand(2) - 1);
+      
+      // Shape the noise with exciter mass (heavier = lower frequencies)
+      shaped_noise = noise * (1.0 - mass_factor * 0.7);
+      
+      delay_line[i] = shaped_noise * exciter_vel * (1.0 - i / delay_length);
+      i += 1;
+    );
+    
+    delay_pos = 0;
+    out_env = 1.0;
+    filt_state = 0;
+    bright_filt_state = 0;
+    
+    midisend(offset, msg1, msg2, msg3);
+  );
+  
+  // Note Off
+  status == 0x80 || (status == 0x90 && msg3 == 0) ? (
+    exciter_active = 0;
+    midisend(offset, msg1, msg2, msg3);
+  );
+);
+
+@sample
+output = 0;
+
+// Generate exciter impulse if active
+exciter_active && exciter_time < exciter_duration ? (
+  // Decaying impulse based on mass
+  exciter_amp = exciter_vel * (1.0 - exciter_time / exciter_duration);
+  exciter_amp *= pow(1.0 - exciter_time / exciter_duration, 1.0 + exciter_mass * 3);
+  
+  // Add to delay line
+  delay_line[delay_pos] += exciter_amp * 0.3;
+  
+  exciter_time += 1;
+  exciter_time >= exciter_duration ? exciter_active = 0;
+);
+
+// Read from delay line
+delayed = delay_line[delay_pos];
+
+// Damping filter (one-pole lowpass)
+filtered = delayed * damp_inv + filt_state * damp_coef;
+filt_state = filtered;
+
+// Brightness filter
+bright_filtered = filtered * (1.0 - bright_inv) + bright_filt_state * bright_inv;
+bright_filt_state = bright_filtered;
+
+// All-pass filter for dispersion (wood is dispersive)
+// This adds slight inharmonicity
+dispersion = 0.3 * wood_density;
+dispersed = bright_filtered * (1.0 - dispersion) + 
+            delay_line[(delay_pos - floor(delay_length * 0.5) + max_delay) % max_delay] * dispersion;
+
+// Write back to delay line with feedback
+delay_line[delay_pos] = dispersed * (0.9995 - damping * 0.1);
+
+// Add modal resonances (for wood character)
+mode1_out = sin(mode1_phase) * out_env * 0.3;
+mode2_out = sin(mode2_phase) * out_env * 0.15 * (1.0 - wood_density * 0.5);
+mode3_out = sin(mode3_phase) * out_env * 0.08 * (1.0 - wood_density * 0.7);
+
+mode1_phase += mode1_inc;
+mode2_phase += mode2_inc;
+mode3_phase += mode3_inc;
+
+// Decay modes
+mode1_phase >= 2 * $pi ? mode1_phase -= 2 * $pi;
+mode2_phase >= 2 * $pi ? mode2_phase -= 2 * $pi;
+mode3_phase >= 2 * $pi ? mode3_phase -= 2 * $pi;
+
+modal_sum = (mode1_out + mode2_out + mode3_out) * resonance_mix;
+
+// Advance delay position
+delay_pos = (delay_pos + 1) % delay_length;
+
+// Mix waveguide and modal resonances
+output = dispersed * (1.0 - resonance_mix * 0.5) + modal_sum;
+
+// Apply envelope decay
+out_env *= 0.9998 - damping * 0.0002;
+
+// Output
+spl0 = output * 0.5;
+spl1 = output * 0.5;
+
+@gfx 600 450
+// Black background
+gfx_r = 0; gfx_g = 0; gfx_b = 0; gfx_a = 1;
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+// Title
+gfx_setfont(1, "Arial", 24);
+gfx_r = 0.8; gfx_g = 0.8; gfx_b = 0.8; gfx_a = 0.8;
+gfx_x = 20; gfx_y = 20;
+gfx_drawstr("WOOD IMPACT SYNTH");
+
+// Smaller font
+gfx_setfont(1, "Arial", 14);
+
+// Slider dimensions
+slider_x = 20;
+slider_w = 560;
+slider_h = 18;
+label_w = 180;
+
+// Function to draw and handle a slider
+function draw_slider(y_pos, label, value, min_val, max_val, slider_num) local(bar_w, new_val, needs_update)
+(
+  needs_update = 0;
+  
+  // Check mouse interaction
+  mouse_cap ? (
+    (mouse_y >= y_pos && mouse_y <= y_pos + slider_h && 
+     mouse_x >= slider_x + label_w && mouse_x <= slider_x + slider_w - 80) ? (
+      new_val = min_val + ((mouse_x - slider_x - label_w) / (slider_w - label_w - 80)) * (max_val - min_val);
+      new_val = max(min_val, min(max_val, new_val));
+      
+      // Update slider value
+      slider_num == 1 ? slider1 = new_val;
+      slider_num == 2 ? slider2 = new_val;
+      slider_num == 3 ? slider3 = new_val;
+      slider_num == 4 ? slider4 = new_val;
+      slider_num == 5 ? slider5 = new_val;
+      slider_num == 6 ? slider6 = new_val;
+      slider_num == 7 ? slider7 = new_val;
+      
+      value = new_val;
+      needs_update = 1;
+    );
+  );
+  
+  // Draw label
+  gfx_x = slider_x;
+  gfx_y = y_pos;
+  gfx_r = 0.8; gfx_g = 0.8; gfx_b = 0.8; gfx_a = 0.8;
+  gfx_drawstr(label);
+  
+  // Draw slider background
+  gfx_r = 0.2; gfx_g = 0.2; gfx_b = 0.2; gfx_a = 1;
+  gfx_rect(slider_x + label_w, y_pos, slider_w - label_w - 80, slider_h);
+  
+  // Draw slider fill
+  bar_w = ((value - min_val) / (max_val - min_val)) * (slider_w - label_w - 80);
+  gfx_r = 0.5; gfx_g = 0.7; gfx_b = 0.5; gfx_a = 0.8;
+  gfx_rect(slider_x + label_w, y_pos, bar_w, slider_h);
+  
+  // Draw value
+  gfx_r = 0.8; gfx_g = 0.8; gfx_b = 0.8; gfx_a = 0.8;
+  gfx_x = slider_x + slider_w - 70;
+  gfx_y = y_pos;
+  gfx_printf("%.0f%%", value * 100);
+  
+  needs_update;
+);
+
+// Draw all sliders
+y = 60;
+spacing = 28;
+any_changed = 0;
+
+any_changed |= draw_slider(y, "Wood Density", slider1, 0, 1, 1);
+y += spacing;
+
+any_changed |= draw_slider(y, "Wood Size", slider2, 0, 1, 2);
+y += spacing;
+
+any_changed |= draw_slider(y, "Damping", slider3, 0, 1, 3);
+y += spacing;
+
+any_changed |= draw_slider(y, "Exciter Mass", slider4, 0, 1, 4);
+y += spacing;
+
+any_changed |= draw_slider(y, "Impact Velocity", slider5, 0, 1, 5);
+y += spacing;
+
+any_changed |= draw_slider(y, "Brightness", slider6, 0, 1, 6);
+y += spacing;
+
+any_changed |= draw_slider(y, "Resonance", slider7, 0, 1, 7);
+
+// Update parameters if any slider changed
+any_changed ? update_params();
+
+// Visualize delay line contents (waveform)
+gfx_r = 0.4; gfx_g = 0.6; gfx_b = 0.4; gfx_a = 0.8;
+viz_x = 20;
+viz_y = 280;
+viz_w = 560;
+viz_h = 120;
+
+// Draw border
+gfx_rect(viz_x, viz_y, viz_w, viz_h, 0);
+
+// Draw waveform
+gfx_r = 0.6; gfx_g = 0.8; gfx_b = 0.6; gfx_a = 0.9;
+step = max(1, floor(delay_length / viz_w));
+i = 0;
+loop(viz_w,
+  idx = floor((delay_pos + i * step) % delay_length);
+  sample_val = delay_line[idx];
+  
+  y_plot = viz_y + viz_h / 2 - sample_val * viz_h * 0.4;
+  
+  i == 0 ? (
+    gfx_x = viz_x + i;
+    gfx_y = y_plot;
+  ) : (
+    gfx_lineto(viz_x + i, y_plot, 1);
+  );
+  
+  i += 1;
+);
+
+// Status text
+gfx_r = 0.6; gfx_g = 0.6; gfx_b = 0.6; gfx_a = 0.8;
+gfx_x = 20;
+gfx_y = 420;
+exciter_active ? (
+  gfx_drawstr("EXCITING...");
+) : (
+  gfx_drawstr("Send MIDI notes to trigger");
+);

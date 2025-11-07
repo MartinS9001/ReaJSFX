@@ -1,0 +1,452 @@
+desc: Freeverb Test - 4 Combs with Modulation + Early Reflections
+// Testing with 4 comb filters + LFO modulation + Early Reflections
+
+slider1:0.5<0,1,0.01>-Decay Time
+slider2:0.5<0,1,0.01>-Damping
+slider3:0.33<0,1,0.01>-Wet
+slider4:0.7<0,1,0.01>-Dry
+slider5:1.0<0,1,0.01>-Width
+slider6:0.3<0,1,0.01>-Modulation Depth
+slider7:0.5<0,1,0.01>-Early Reflections Level
+slider8:1.0<1,50,1>-ER Time Scale
+slider9:0.8<0.2,1,0.01>-ER Initial Decay
+
+@init
+// 4 comb filters per channel
+spread = 23;
+
+comb_L1_size = 1116;
+comb_L2_size = 1188;
+comb_L3_size = 1277;
+comb_L4_size = 1356;
+
+comb_R1_size = 1116 + spread;
+comb_R2_size = 1188 + spread;
+comb_R3_size = 1277 + spread;
+comb_R4_size = 1356 + spread;
+
+ptr = 0;
+comb_L1 = ptr; ptr += comb_L1_size;
+comb_L2 = ptr; ptr += comb_L2_size;
+comb_L3 = ptr; ptr += comb_L3_size;
+comb_L4 = ptr; ptr += comb_L4_size;
+
+comb_R1 = ptr; ptr += comb_R1_size;
+comb_R2 = ptr; ptr += comb_R2_size;
+comb_R3 = ptr; ptr += comb_R3_size;
+comb_R4 = ptr; ptr += comb_R4_size;
+
+// Early reflections tap delays (in samples) - BASE VALUES
+// These will be scaled by the time scale parameter
+er_tap1_base = 199;
+er_tap2_base = 353;
+er_tap3_base = 547;
+er_tap4_base = 797;
+er_tap5_base = 1097;
+er_tap6_base = 1259;
+er_tap7_base = 1511;
+er_tap8_base = 1777;
+
+// Early reflections buffer (max delay) - needs to be big enough for max scaling
+er_size = 100000; // Allows for 5x time scaling
+er_buf_L = ptr; ptr += er_size;
+er_buf_R = ptr; ptr += er_size;
+
+// Zero everything
+memset(0, 0, ptr);
+
+// Initialize positions
+comb_L1_p = comb_L2_p = comb_L3_p = comb_L4_p = 0;
+comb_R1_p = comb_R2_p = comb_R3_p = comb_R4_p = 0;
+er_pos_L = er_pos_R = 0;
+
+// Initialize filter states
+filt_L1 = filt_L2 = filt_L3 = filt_L4 = 0;
+filt_R1 = filt_R2 = filt_R3 = filt_R4 = 0;
+
+// DC blocker states
+dc_x1_l = dc_y1_l = 0;
+dc_x1_r = dc_y1_r = 0;
+
+// LFO phases (one per comb filter pair - L and R use same base)
+lfo_phase_1 = 0;
+lfo_phase_2 = 0.25; // Offset phases for variety
+lfo_phase_3 = 0.5;
+lfo_phase_4 = 0.75;
+
+// LFO rates (in Hz) - very slow and subtle
+lfo_rate_1 = 0.21;
+lfo_rate_2 = 0.17;
+lfo_rate_3 = 0.23;
+lfo_rate_4 = 0.19;
+
+// UI Colors
+ui_bg_color = 0x000000; // Black
+ui_fg_color = 0xCCCCCC; // White with ~80% alpha (204/255)
+ui_text_color = 0xCCCCCC;
+
+// Function to recalculate all DSP parameters from sliders
+function update_dsp_params()
+(
+  decay_time = slider1;
+  damp = slider2;
+  wet_level = slider3;
+  dry_level = slider4;
+  width = slider5;
+  mod_depth = slider6;
+  er_level = slider7;
+  er_time_scale = slider8;
+  er_decay = slider9;
+
+  // Feedback - now with extended range for longer decay
+  feedback = 0.5 + decay_time * 0.48;
+  feedback = min(feedback, 0.98);
+
+  // Damping
+  damp1 = damp * 0.4;
+  damp2 = 1.0 - damp1;
+
+  // Stereo width
+  wet1 = wet_level * (width * 0.5 + 0.5);
+  wet2 = wet_level * ((1.0 - width) * 0.5);
+
+  // Modulation depth in samples
+  mod_amount = mod_depth * 2;
+
+  // Calculate scaled ER tap times
+  er_tap1 = floor(er_tap1_base * er_time_scale);
+  er_tap2 = floor(er_tap2_base * er_time_scale);
+  er_tap3 = floor(er_tap3_base * er_time_scale);
+  er_tap4 = floor(er_tap4_base * er_time_scale);
+  er_tap5 = floor(er_tap5_base * er_time_scale);
+  er_tap6 = floor(er_tap6_base * er_time_scale);
+  er_tap7 = floor(er_tap7_base * er_time_scale);
+  er_tap8 = floor(er_tap8_base * er_time_scale);
+
+  // Make sure taps don't exceed buffer size
+  er_tap1 = min(er_tap1, er_size - 1);
+  er_tap2 = min(er_tap2, er_size - 1);
+  er_tap3 = min(er_tap3, er_size - 1);
+  er_tap4 = min(er_tap4, er_size - 1);
+  er_tap5 = min(er_tap5, er_size - 1);
+  er_tap6 = min(er_tap6, er_size - 1);
+  er_tap7 = min(er_tap7, er_size - 1);
+  er_tap8 = min(er_tap8, er_size - 1);
+
+  // Calculate decay multipliers
+  decay_factor = 0.85;
+  er_gain1 = er_decay;
+  er_gain2 = er_decay * pow(decay_factor, 1);
+  er_gain3 = er_decay * pow(decay_factor, 2);
+  er_gain4 = er_decay * pow(decay_factor, 3);
+  er_gain5 = er_decay * pow(decay_factor, 4);
+  er_gain6 = er_decay * pow(decay_factor, 5);
+  er_gain7 = er_decay * pow(decay_factor, 6);
+  er_gain8 = er_decay * pow(decay_factor, 7);
+);
+
+@slider
+update_dsp_params();
+
+@gfx 600 400
+// Set background to black
+gfx_r = 0;
+gfx_g = 0;
+gfx_b = 0;
+gfx_a = 1;
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+// Set text color to white ~80%
+gfx_r = 0.8;
+gfx_g = 0.8;
+gfx_b = 0.8;
+gfx_a = 0.8;
+
+// Draw title
+gfx_setfont(1, "Arial", 24);
+gfx_x = 20;
+gfx_y = 20;
+gfx_drawstr("FREEVERB+");
+
+// Smaller font for sliders
+gfx_setfont(1, "Arial", 14);
+
+// Slider dimensions
+slider_x = 20;
+slider_w = 560;
+slider_h = 20;
+label_w = 180;
+
+// Function to draw and handle a slider
+function draw_slider(y_pos, label, value, min_val, max_val, slider_num) local(bar_w, new_val, needs_update)
+(
+  needs_update = 0;
+  
+  // Check mouse interaction first
+  mouse_cap ? (
+    (mouse_y >= y_pos && mouse_y <= y_pos + slider_h && 
+     mouse_x >= slider_x + label_w && mouse_x <= slider_x + slider_w - 80) ? (
+      new_val = min_val + ((mouse_x - slider_x - label_w) / (slider_w - label_w - 80)) * (max_val - min_val);
+      new_val = max(min_val, min(max_val, new_val));
+      
+      // Update the actual slider value
+      slider_num == 1 ? slider1 = new_val;
+      slider_num == 2 ? slider2 = new_val;
+      slider_num == 3 ? slider3 = new_val;
+      slider_num == 4 ? slider4 = new_val;
+      slider_num == 5 ? slider5 = new_val;
+      slider_num == 6 ? slider6 = new_val;
+      slider_num == 7 ? slider7 = new_val;
+      slider_num == 8 ? slider8 = new_val;
+      slider_num == 9 ? slider9 = new_val;
+      
+      // Update value for display
+      value = new_val;
+      
+      // Flag that we need to update DSP
+      needs_update = 1;
+    );
+  );
+  
+  // Draw label
+  gfx_x = slider_x;
+  gfx_y = y_pos;
+  gfx_r = 0.8; gfx_g = 0.8; gfx_b = 0.8; gfx_a = 0.8;
+  gfx_drawstr(label);
+  
+  // Draw slider background
+  gfx_r = 0.2; gfx_g = 0.2; gfx_b = 0.2; gfx_a = 1;
+  gfx_rect(slider_x + label_w, y_pos, slider_w - label_w - 80, slider_h);
+  
+  // Draw slider fill
+  bar_w = ((value - min_val) / (max_val - min_val)) * (slider_w - label_w - 80);
+  gfx_r = 0.6; gfx_g = 0.6; gfx_b = 0.6; gfx_a = 0.8;
+  gfx_rect(slider_x + label_w, y_pos, bar_w, slider_h);
+  
+  // Draw value
+  gfx_r = 0.8; gfx_g = 0.8; gfx_b = 0.8; gfx_a = 0.8;
+  gfx_x = slider_x + slider_w - 70;
+  gfx_y = y_pos;
+  
+  // Format value display based on range
+  (max_val > 2) ? (
+    gfx_printf("%.2f", value);
+  ) : (
+    gfx_printf("%.0f%%", value * 100);
+  );
+  
+  needs_update;
+);
+
+// Draw all sliders with current values
+y = 70;
+spacing = 35;
+any_changed = 0;
+
+any_changed |= draw_slider(y, "Decay Time", slider1, 0, 1, 1);
+y += spacing;
+
+any_changed |= draw_slider(y, "Damping", slider2, 0, 1, 2);
+y += spacing;
+
+any_changed |= draw_slider(y, "Wet", slider3, 0, 1, 3);
+y += spacing;
+
+any_changed |= draw_slider(y, "Dry", slider4, 0, 1, 4);
+y += spacing;
+
+any_changed |= draw_slider(y, "Width", slider5, 0, 1, 5);
+y += spacing;
+
+any_changed |= draw_slider(y, "Modulation Depth", slider6, 0, 1, 6);
+y += spacing;
+
+any_changed |= draw_slider(y, "ER Level", slider7, 0, 1, 7);
+y += spacing;
+
+any_changed |= draw_slider(y, "ER Time Scale", slider8, 1, 50, 8);
+y += spacing;
+
+any_changed |= draw_slider(y, "ER Initial Decay", slider9, 0.2, 1, 9);
+
+// If any slider changed, update DSP parameters
+any_changed ? update_dsp_params();
+
+// Draw feedback indicator at bottom
+gfx_x = 20;
+gfx_y = 370;
+gfx_r = 0.6; gfx_g = 0.6; gfx_b = 0.6; gfx_a = 0.8;
+gfx_printf("Feedback: %.3f", feedback);
+
+@sample
+// Mono input
+inp = (spl0 + spl1) * 0.015;
+
+// ====== EARLY REFLECTIONS ======
+// Write input to ER buffers
+er_buf_L[er_pos_L] = spl0 * 0.015;
+er_buf_R[er_pos_R] = spl1 * 0.015;
+
+// Read multiple taps and sum them (with scaled decay)
+er_out_L = 
+  er_buf_L[(er_pos_L - er_tap1 + er_size) % er_size] * er_gain1 +
+  er_buf_L[(er_pos_L - er_tap2 + er_size) % er_size] * er_gain2 +
+  er_buf_L[(er_pos_L - er_tap3 + er_size) % er_size] * er_gain3 +
+  er_buf_L[(er_pos_L - er_tap4 + er_size) % er_size] * er_gain4 +
+  er_buf_L[(er_pos_L - er_tap5 + er_size) % er_size] * er_gain5 +
+  er_buf_L[(er_pos_L - er_tap6 + er_size) % er_size] * er_gain6 +
+  er_buf_L[(er_pos_L - er_tap7 + er_size) % er_size] * er_gain7 +
+  er_buf_L[(er_pos_L - er_tap8 + er_size) % er_size] * er_gain8;
+
+er_out_R = 
+  er_buf_R[(er_pos_R - er_tap1 + er_size) % er_size] * er_gain1 +
+  er_buf_R[(er_pos_R - er_tap2 + er_size) % er_size] * er_gain2 +
+  er_buf_R[(er_pos_R - er_tap3 + er_size) % er_size] * er_gain3 +
+  er_buf_R[(er_pos_R - er_tap4 + er_size) % er_size] * er_gain4 +
+  er_buf_R[(er_pos_R - er_tap5 + er_size) % er_size] * er_gain5 +
+  er_buf_R[(er_pos_R - er_tap6 + er_size) % er_size] * er_gain6 +
+  er_buf_R[(er_pos_R - er_tap7 + er_size) % er_size] * er_gain7 +
+  er_buf_R[(er_pos_R - er_tap8 + er_size) % er_size] * er_gain8;
+
+er_pos_L = (er_pos_L + 1) % er_size;
+er_pos_R = (er_pos_R + 1) % er_size;
+
+// ====== LATE REVERB (COMB FILTERS) ======
+// Update LFO phases (shared between L and R)
+lfo_phase_1 += lfo_rate_1 / srate;
+lfo_phase_1 >= 1 ? lfo_phase_1 -= 1;
+lfo_phase_2 += lfo_rate_2 / srate;
+lfo_phase_2 >= 1 ? lfo_phase_2 -= 1;
+lfo_phase_3 += lfo_rate_3 / srate;
+lfo_phase_3 >= 1 ? lfo_phase_3 -= 1;
+lfo_phase_4 += lfo_rate_4 / srate;
+lfo_phase_4 >= 1 ? lfo_phase_4 -= 1;
+
+// Calculate LFO values (sine waves) - same for L and R with tiny offset
+lfo_1 = sin(lfo_phase_1 * 2 * $pi) * mod_amount;
+lfo_2 = sin(lfo_phase_2 * 2 * $pi) * mod_amount;
+lfo_3 = sin(lfo_phase_3 * 2 * $pi) * mod_amount;
+lfo_4 = sin(lfo_phase_4 * 2 * $pi) * mod_amount;
+
+// Slightly offset for stereo (very small)
+lfo_1_R = sin((lfo_phase_1 + 0.05) * 2 * $pi) * mod_amount;
+lfo_2_R = sin((lfo_phase_2 + 0.05) * 2 * $pi) * mod_amount;
+lfo_3_R = sin((lfo_phase_3 + 0.05) * 2 * $pi) * mod_amount;
+lfo_4_R = sin((lfo_phase_4 + 0.05) * 2 * $pi) * mod_amount;
+
+// LEFT CHANNEL - 4 comb filters with modulation
+out_l = 0;
+
+// Comb L1 - with linear interpolation for smooth modulation
+read_pos = comb_L1_p - lfo_1;
+read_pos < 0 ? read_pos += comb_L1_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_L1[read_idx] * (1 - read_frac) + comb_L1[(read_idx + 1) % comb_L1_size] * read_frac;
+filt_L1 = temp * damp2 + filt_L1 * damp1;
+comb_L1[comb_L1_p] = inp + filt_L1 * feedback;
+out_l += temp;
+comb_L1_p = (comb_L1_p + 1) % comb_L1_size;
+
+// Comb L2
+read_pos = comb_L2_p - lfo_2;
+read_pos < 0 ? read_pos += comb_L2_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_L2[read_idx] * (1 - read_frac) + comb_L2[(read_idx + 1) % comb_L2_size] * read_frac;
+filt_L2 = temp * damp2 + filt_L2 * damp1;
+comb_L2[comb_L2_p] = inp + filt_L2 * feedback;
+out_l += temp;
+comb_L2_p = (comb_L2_p + 1) % comb_L2_size;
+
+// Comb L3
+read_pos = comb_L3_p - lfo_3;
+read_pos < 0 ? read_pos += comb_L3_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_L3[read_idx] * (1 - read_frac) + comb_L3[(read_idx + 1) % comb_L3_size] * read_frac;
+filt_L3 = temp * damp2 + filt_L3 * damp1;
+comb_L3[comb_L3_p] = inp + filt_L3 * feedback;
+out_l += temp;
+comb_L3_p = (comb_L3_p + 1) % comb_L3_size;
+
+// Comb L4
+read_pos = comb_L4_p - lfo_4;
+read_pos < 0 ? read_pos += comb_L4_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_L4[read_idx] * (1 - read_frac) + comb_L4[(read_idx + 1) % comb_L4_size] * read_frac;
+filt_L4 = temp * damp2 + filt_L4 * damp1;
+comb_L4[comb_L4_p] = inp + filt_L4 * feedback;
+out_l += temp;
+comb_L4_p = (comb_L4_p + 1) % comb_L4_size;
+
+// RIGHT CHANNEL - 4 comb filters with modulation
+out_r = 0;
+
+// Comb R1
+read_pos = comb_R1_p - lfo_1_R;
+read_pos < 0 ? read_pos += comb_R1_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_R1[read_idx] * (1 - read_frac) + comb_R1[(read_idx + 1) % comb_R1_size] * read_frac;
+filt_R1 = temp * damp2 + filt_R1 * damp1;
+comb_R1[comb_R1_p] = inp + filt_R1 * feedback;
+out_r += temp;
+comb_R1_p = (comb_R1_p + 1) % comb_R1_size;
+
+// Comb R2
+read_pos = comb_R2_p - lfo_2_R;
+read_pos < 0 ? read_pos += comb_R2_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_R2[read_idx] * (1 - read_frac) + comb_R2[(read_idx + 1) % comb_R2_size] * read_frac;
+filt_R2 = temp * damp2 + filt_R2 * damp1;
+comb_R2[comb_R2_p] = inp + filt_R2 * feedback;
+out_r += temp;
+comb_R2_p = (comb_R2_p + 1) % comb_R2_size;
+
+// Comb R3
+read_pos = comb_R3_p - lfo_3_R;
+read_pos < 0 ? read_pos += comb_R3_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_R3[read_idx] * (1 - read_frac) + comb_R3[(read_idx + 1) % comb_R3_size] * read_frac;
+filt_R3 = temp * damp2 + filt_R3 * damp1;
+comb_R3[comb_R3_p] = inp + filt_R3 * feedback;
+out_r += temp;
+comb_R3_p = (comb_R3_p + 1) % comb_R3_size;
+
+// Comb R4
+read_pos = comb_R4_p - lfo_4_R;
+read_pos < 0 ? read_pos += comb_R4_size;
+read_idx = floor(read_pos);
+read_frac = read_pos - read_idx;
+temp = comb_R4[read_idx] * (1 - read_frac) + comb_R4[(read_idx + 1) % comb_R4_size] * read_frac;
+filt_R4 = temp * damp2 + filt_R4 * damp1;
+comb_R4[comb_R4_p] = inp + filt_R4 * feedback;
+out_r += temp;
+comb_R4_p = (comb_R4_p + 1) % comb_R4_size;
+
+// Scale down (4 combs per channel)
+out_l *= 0.25;
+out_r *= 0.25;
+
+// Apply +9dB boost to wet signal (9dB = ~2.8x)
+wet_boost = 50;
+out_l *= wet_boost;
+out_r *= wet_boost;
+
+// DC blocker (removes DC offset and subsonic)
+dc_coef = 0.995;
+out_l_clean = out_l - dc_x1_l + dc_coef * dc_y1_l;
+dc_x1_l = out_l;
+dc_y1_l = out_l_clean;
+
+out_r_clean = out_r - dc_x1_r + dc_coef * dc_y1_r;
+dc_x1_r = out_r;
+dc_y1_r = out_r_clean;
+
+// Output mix
+spl0 = spl0 * dry_level + (out_l_clean * wet1 + out_r_clean * wet2) + er_out_L * er_level * 50;
+spl1 = spl1 * dry_level + (out_r_clean * wet1 + out_l_clean * wet2) + er_out_R * er_level * 50;
