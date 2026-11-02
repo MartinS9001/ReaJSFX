@@ -1,0 +1,905 @@
+desc: Onset Round-Robin Sampler
+version: 1.0.0
+author: Marcin Sobczak
+about:
+  # Onset Round-Robin Sampler
+  Drop one or more audio files (straight from REAPER's Media Explorer, or from
+  Explorer/Finder) onto the plugin window. Long files containing many one-shots
+  (e.g. 20 footstep variations in one take) are split automatically with onset
+  detection. Incoming MIDI notes then cycle through the detected hits
+  (sequential, random, random-without-repeat or key-mapped).
+
+  Companion actions "OnsetRR - Load Media Explorer selection" and
+  "OnsetRR - Append Media Explorer selection" send the files selected in the
+  Media Explorer to the sampler on the selected track (needs js_ReaScriptAPI
+  for reading the Media Explorer selection; falls back to selected items /
+  a file dialog).
+changelog: Initial release
+provides:
+  [script main=main,mediaexplorer] OnsetRR - Load Media Explorer selection.lua
+  [script main=main,mediaexplorer] OnsetRR - Append Media Explorer selection.lua
+link: https://github.com/MartinS9001/ReaJSFX
+
+// (C) 2026, Marcin Sobczak. "Onset Round-Robin Sampler"
+// Released under the GPL License: http://www.gnu.org/licenses/gpl.html
+//
+// Usage
+//   * Drag & drop audio files from the Media Explorer onto the plugin window.
+//     Dropping replaces the current content; hold SHIFT while dropping (or
+//     enable "Append on drop") to add files to the existing set.
+//   * Each file is analysed and split into hits ("slices").
+//   * Mouse on the waveform:
+//       click            audition slice
+//       shift+click      add a split marker
+//       alt+click        remove the nearest split marker (merge with previous)
+//       right-click      delete slice (it will no longer be played)
+//   * Changing any of the detection sliders re-runs the analysis
+//     (this discards manual edits).
+
+slider1:9<1,30,0.5>Onset sensitivity (dB rise)
+slider2:-45<-90,-10,1>Gate threshold (dB)
+slider3:80<10,1000,1>Min. time between hits (ms)
+slider4:3<0,30,0.5>Pre-roll (ms)
+slider5:1<0,1,1{Off,On}>Trim silent tails
+slider6:2<0,3,1{Sequential,Random,Random (no repeat),Key-mapped}>Round-robin mode
+slider7:0<0,16,1{Omni,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}>MIDI channel
+slider8:0<0,127,1>Lowest note
+slider9:127<0,127,1>Highest note
+slider10:0<0,1,1{Off,On}>Pitch follows key
+slider11:60<0,127,1>Root note
+slider12:0<0,200,1>Random pitch (+/- cents)
+slider13:0<0,12,0.1>Random gain (+/- dB)
+slider14:50<0,100,1>Velocity sensitivity (%)
+slider15:0<0,1,1{One-shot (ignore),Release}>Note-off
+slider16:40<1,2000,1>Release (ms)
+slider17:0<-48,12,0.1>Volume (dB)
+slider18:16<1,32,1>Polyphony
+slider20:0<0,1000000,1>-Remote load (internal)
+
+options:gmem=ReaJSFX_OnsetRR
+options:maxmem=33554432
+options:no_meter
+
+in_pin:none
+out_pin:Left
+out_pin:Right
+
+@init
+ext_noinit = 1;
+
+// ---------- memory map ----------
+MAXFILES   = 64;
+MAXSL      = 1024;
+NV         = 40;        // voice slots (polyphony + room for fading voices)
+VF         = 12;        // fields per voice
+EVQMAX     = 512;
+PEAKN      = 2048;
+
+FILE_START = 1000;
+FILE_LEN   = 1100;
+FILE_RATE  = 1200;
+MAP        = 1300;
+SL_START   = 2000;
+SL_END     = 3100;
+SL_FILE    = 4200;
+SHUF       = 5300;
+VOICE      = 6400;      // NV*VF = 480
+EVQ        = 7000;      // EVQMAX*4 = 2048
+PEAK       = 10000;     // PEAKN
+SV_FILE    = 13000;
+SV_S       = 14100;
+SV_E       = 15200;
+ENV        = 20000;
+ENVMAX     = 560000;
+TEMP       = 600000;
+TEMPLEN    = 262144;
+BUF        = 1048576;   // interleaved stereo sample data
+BUFMAX     = floor((33554432 - BUF) / 2) - 4;
+
+// string slots: 100+i = loaded file paths, 300+i = pending paths
+
+// ---------- state ----------
+nfiles = 0; nslices = 0; total = 0;
+rr_next = 0; shuf_n = 0; shuf_pos = 0; last_slice = -1;
+trig_count = 0; vcounter = 0;
+append_mode = 0;
+req_load = req_restore = req_append = req_clear = req_redetect = 0;
+req_edit = 0; req_audition = 0;
+redetect_pending = 0; blk_time = 0;
+slices_sig = -1; last_trig = slider20;
+memset(VOICE, 0, NV*VF);
+strcpy(#status, "Drop audio files here (from Media Explorer, Explorer or Finder)");
+
+// ---------- helpers ----------
+function det_sig()
+(
+  slider1*7 + slider2*131 + slider3*1031 + slider4*10007 + slider5*100003;
+);
+
+function kill_voices()
+(
+  memset(VOICE, 0, NV*VF);
+);
+
+function clear_data()
+(
+  kill_voices();
+  nfiles = 0; nslices = 0; total = 0;
+  rr_next = 0; shuf_n = 0; last_slice = -1;
+  memset(PEAK, 0, PEAKN);
+  peak_max = 0;
+);
+
+function file_of_frame(f) local(i, r)
+(
+  r = -1; i = 0;
+  while (i < nfiles && r < 0) (
+    f >= FILE_START[i] && f < FILE_START[i] + FILE_LEN[i] ? r = i;
+    i += 1;
+  );
+  r;
+);
+
+function slice_at(f) local(i, r)
+(
+  r = -1; i = 0;
+  while (i < nslices && r < 0) (
+    f >= SL_START[i] && f < SL_END[i] ? r = i;
+    i += 1;
+  );
+  r;
+);
+
+function remove_slice(i) local(j)
+(
+  i >= 0 && i < nslices ? (
+    j = i;
+    while (j < nslices - 1) (
+      SL_START[j] = SL_START[j+1]; SL_END[j] = SL_END[j+1]; SL_FILE[j] = SL_FILE[j+1];
+      j += 1;
+    );
+    nslices -= 1;
+    shuf_n = 0;
+  );
+);
+
+function insert_slice(i, s, e, fi) local(j)
+(
+  nslices < MAXSL ? (
+    j = nslices;
+    while (j > i) (
+      SL_START[j] = SL_START[j-1]; SL_END[j] = SL_END[j-1]; SL_FILE[j] = SL_FILE[j-1];
+      j -= 1;
+    );
+    SL_START[i] = s; SL_END[i] = e; SL_FILE[i] = fi;
+    nslices += 1;
+    shuf_n = 0;
+  );
+);
+
+// Append an audio file to the buffer. Returns 1 on success.
+function load_file_append(path) local(h, nch, sr, got, frames, dst, k, start, want, ok)
+(
+  ok = 0;
+  nfiles < MAXFILES && total < BUFMAX ? (
+    strcpy(#openpath, path);   // numeric slot -> named string so file_open treats it as a path
+    h = file_open(#openpath);
+    h >= 0 ? (
+      nch = 0; sr = 0;
+      file_riff(h, nch, sr);
+      nch >= 1 && sr > 0 ? (
+        start = total;
+        want = floor(TEMPLEN / nch) * nch;
+        while (
+          got = file_mem(h, TEMP, want);
+          frames = floor(got / nch);
+          frames > BUFMAX - total ? frames = BUFMAX - total;
+          dst = BUF + total*2;
+          k = TEMP;
+          nch == 1 ? (
+            loop(frames, dst[0] = k[0]; dst[1] = k[0]; dst += 2; k += 1; );
+          ) : (
+            loop(frames, dst[0] = k[0]; dst[1] = k[1]; dst += 2; k += nch; );
+          );
+          total += frames;
+          got >= want && total < BUFMAX;
+        );
+        total > start ? (
+          FILE_START[nfiles] = start;
+          FILE_LEN[nfiles]   = total - start;
+          FILE_RATE[nfiles]  = sr;
+          strcpy(100 + nfiles, path);
+          nfiles += 1;
+          // a few zero samples of padding for the interpolator
+          memset(BUF + total*2, 0, 8);
+          ok = 1;
+        );
+      );
+      file_close(h);
+    );
+  );
+  ok;
+);
+
+// sample-accurate attack position near envelope frame f
+function find_attack(fs, fl, f, hop) local(a, b, c, p, pk, th, j, v)
+(
+  a = fs + max(0, f-1)*hop;
+  c = fs + f*hop;
+  b = min(fs + fl, fs + (f+1)*hop);
+  pk = 0; p = BUF + c*2;
+  loop(b - c, v = max(abs(p[0]), abs(p[1])); v > pk ? pk = v; p += 2; );
+  th = pk * 0.1;
+  j = a; p = BUF + a*2;
+  while (j < b && max(abs(p[0]), abs(p[1])) < th) ( j += 1; p += 2; );
+  j;
+);
+
+// onset detection for one file; appends slices
+function detect_file(fi) local(fs, fl, sr, hop, nfr, f, a, b, ms, p, thr, gate, gapfr, pre,
+                               slow, coef, armed, last, first, e, pos, i, eend, fstart, t)
+(
+  fs = FILE_START[fi]; fl = FILE_LEN[fi]; sr = FILE_RATE[fi];
+  hop = max(16, floor(sr * 0.005));
+  nfr = ceil(fl / hop);
+  nfr > ENVMAX ? ( hop = ceil(fl / ENVMAX); nfr = ceil(fl / hop); );
+
+  // short-time energy envelope (dB)
+  f = 0;
+  loop(nfr,
+    a = fs + f*hop; b = min(a + hop, fs + fl);
+    ms = 0; p = BUF + a*2;
+    loop(b - a, ms += p[0]*p[0] + p[1]*p[1]; p += 2; );
+    ms /= max(1, (b - a)*2);
+    ENV[f] = 10 * log10(ms + 1e-14);
+    f += 1;
+  );
+
+  thr   = slider1;
+  gate  = slider2;
+  gapfr = max(1, floor(slider3 * 0.001 * sr / hop));
+  pre   = floor(slider4 * 0.001 * sr);
+  coef  = 1 - exp(-hop / (sr * 0.05));
+  slow  = -120; armed = 1; last = -1000000;
+  first = nslices;
+
+  f = 0;
+  loop(nfr,
+    e = ENV[f];
+    !armed && (e - slow < thr*0.5 || e < gate) ? armed = 1;
+    armed && e > gate && e - slow >= thr && f - last >= gapfr && nslices < MAXSL ? (
+      pos = find_attack(fs, fl, f, hop) - pre;
+      pos < fs ? pos = fs;
+      nslices > first ? pos = max(pos, SL_START[nslices-1] + 1);
+      SL_START[nslices] = pos; SL_FILE[nslices] = fi;
+      nslices += 1;
+      armed = 0; last = f;
+    );
+    slow += coef * (e - slow);
+    f += 1;
+  );
+
+  // nothing detected -> the whole file is one slice
+  nslices == first && nslices < MAXSL ? (
+    SL_START[nslices] = fs; SL_FILE[nslices] = fi; nslices += 1;
+  );
+
+  // slice ends
+  i = first;
+  while (i < nslices) (
+    eend = i + 1 < nslices ? SL_START[i+1] : fs + fl;
+    slider5 ? (
+      fstart = floor((SL_START[i] - fs) / hop);
+      f = floor((eend - fs - 1) / hop);
+      while (f > fstart && ENV[f] < gate) ( f -= 1; );
+      t = fs + (f + 1)*hop + floor(sr * 0.01);
+      t < eend ? eend = t;
+    );
+    SL_END[i] = max(eend, SL_START[i] + 1);
+    i += 1;
+  );
+);
+
+function redetect_all() local(fi)
+(
+  nslices = 0;
+  fi = 0;
+  loop(nfiles, detect_file(fi); fi += 1; );
+  slices_sig = det_sig();
+  rr_next = 0; shuf_n = 0;
+);
+
+function compute_peaks() local(b, a, e, step, j, p, v, pk)
+(
+  memset(PEAK, 0, PEAKN);
+  peak_max = 0;
+  total > 0 ? (
+    b = 0;
+    loop(PEAKN,
+      a = floor(b * total / PEAKN);
+      e = min(total, max(a + 1, floor((b + 1) * total / PEAKN)));
+      step = max(1, floor((e - a) / 256));
+      pk = 0; j = a;
+      while (j < e) (
+        p = BUF + j*2;
+        v = max(abs(p[0]), abs(p[1]));
+        v > pk ? pk = v;
+        j += step;
+      );
+      PEAK[b] = pk;
+      pk > peak_max ? peak_max = pk;
+      b += 1;
+    );
+  );
+);
+
+function set_status()
+(
+  nfiles == 0 ? strcpy(#status, "Drop audio files here (from Media Explorer, Explorer or Finder)")
+  : sprintf(#status, "%d file(s), %d slices", nfiles, nslices);
+);
+
+// process pending file list (strings 300..300+pend_n-1)
+function do_load() local(i, same, first_new, fi, nf, s, e, failed)
+(
+  kill_voices();
+  same = 0;
+  req_restore && pend_n == nfiles && nfiles > 0 ? (
+    same = 1; i = 0;
+    loop(nfiles, strcmp(100 + i, 300 + i) != 0 ? same = 0; i += 1; );
+  );
+
+  failed = 0;
+  first_new = nfiles;
+  same ? (
+    i = 0; loop(nfiles, MAP[i] = i; i += 1; );
+  ) : (
+    !req_append ? ( clear_data(); first_new = 0; );
+    i = 0;
+    loop(pend_n,
+      load_file_append(300 + i) ? ( MAP[i] = nfiles - 1; ) : ( MAP[i] = -1; failed += 1; );
+      i += 1;
+    );
+    compute_peaks();
+  );
+
+  req_restore ? (
+    nslices = 0; i = 0;
+    loop(restore_n,
+      fi = SV_FILE[i];
+      fi >= 0 && fi < pend_n && nslices < MAXSL ? (
+        nf = MAP[fi];
+        nf >= 0 ? (
+          s = FILE_START[nf] + max(0, SV_S[i]);
+          e = FILE_START[nf] + min(FILE_LEN[nf], SV_E[i]);
+          e > s ? (
+            SL_START[nslices] = s; SL_END[nslices] = e; SL_FILE[nslices] = nf;
+            nslices += 1;
+          );
+        );
+      );
+      i += 1;
+    );
+    slices_sig = restore_sig;
+    nslices == 0 && nfiles > 0 ? redetect_all();
+  ) : (
+    req_append ? (
+      fi = first_new;
+      loop(nfiles - first_new, detect_file(fi); fi += 1; );
+      first_new == 0 ? slices_sig = det_sig();
+    ) : redetect_all();
+  );
+
+  rr_next = 0; shuf_n = 0;
+  set_status();
+  failed > 0 ? (
+    sprintf(#tmpmsg, "  (%d file(s) could not be read)", failed);
+    strcat(#status, #tmpmsg);
+  );
+);
+
+// read a path list written by the companion Lua script into gmem
+function read_gmem_paths() local(n, i, p, c, s)
+(
+  n = min(max(gmem[1]|0, 0), MAXFILES);
+  p = 16; i = 0;
+  loop(n,
+    s = 300 + i;
+    strcpy(s, "");
+    while ((c = gmem[p]) > 0 && p < 1000000) (
+      sprintf(#gch, "%c", c);
+      strcat(s, #gch);
+      p += 1;
+    );
+    p += 1;
+    i += 1;
+  );
+  pend_n = n;
+);
+
+function reshuffle(n) local(i, j, t)
+(
+  i = 0; loop(n, SHUF[i] = i; i += 1; );
+  i = n - 1;
+  while (i > 0) (
+    j = floor(rand(i + 1)); j > i ? j = i;
+    t = SHUF[i]; SHUF[i] = SHUF[j]; SHUF[j] = t;
+    i -= 1;
+  );
+  // avoid repeating the last hit across shuffle boundaries
+  n > 1 && SHUF[0] == last_slice ? ( t = SHUF[0]; SHUF[0] = SHUF[n-1]; SHUF[n-1] = t; );
+  shuf_pos = 0; shuf_n = n;
+);
+
+function pick_slice(note) local(n, s)
+(
+  n = nslices;
+  s = -1;
+  n > 0 ? (
+    slider6 == 0 ? (
+      rr_next >= n ? rr_next = 0;
+      s = rr_next;
+      rr_next = (rr_next + 1) % n;
+    ) : slider6 == 1 ? (
+      s = floor(rand(n)); s >= n ? s = n - 1;
+    ) : slider6 == 2 ? (
+      (shuf_n != n || shuf_pos >= n) ? reshuffle(n);
+      s = SHUF[shuf_pos]; shuf_pos += 1;
+    ) : (
+      s = (note - slider8) % n;
+      s < 0 ? s += n;
+    );
+  );
+  s;
+);
+
+function start_voice(s, note, vel) local(i, v, cnt, oldest, oldage, anyold, anyage, free, fi, pitch, g)
+(
+  s >= 0 && s < nslices ? (
+    cnt = 0; oldest = -1; oldage = 1e30; anyold = 0; anyage = 1e30; free = -1;
+    i = 0; v = VOICE;
+    loop(NV,
+      v[0] ? (
+        v[9] < anyage ? ( anyage = v[9]; anyold = i; );
+        v[6] == 0 ? (
+          cnt += 1;
+          v[9] < oldage ? ( oldage = v[9]; oldest = i; );
+        );
+      ) : (
+        free < 0 ? free = i;
+      );
+      i += 1; v += VF;
+    );
+    // polyphony limit: fade out the oldest held voice
+    cnt >= slider18 && oldest >= 0 ? ( v = VOICE + oldest*VF; v[6] = fast_rel; );
+    free < 0 ? free = anyold;
+
+    v = VOICE + free*VF;
+    fi = SL_FILE[s];
+    pitch = slider10 ? 2 ^ ((note - slider11) / 12) : 1;
+    slider12 > 0 ? pitch *= 2 ^ ((rand(2) - 1) * slider12 / 1200);
+    g = vol * (1 - velsens + velsens * sqr(vel / 127));
+    slider13 > 0 ? g *= 10 ^ ((rand(2) - 1) * slider13 / 20);
+    vcounter += 1;
+    v[0] = 1;
+    v[1] = SL_START[s];
+    v[2] = SL_END[s];
+    v[3] = FILE_RATE[fi] / srate * pitch;
+    v[4] = g;
+    v[5] = 0;
+    v[6] = 0;
+    v[7] = note;
+    v[8] = s;
+    v[9] = vcounter;
+    last_slice = s;
+    trig_count += 1;
+  );
+);
+
+function handle_event(e) local(t, a, b, i, v)
+(
+  t = e[1]; a = e[2]; b = e[3];
+  t == 1 ? (
+    start_voice(pick_slice(a), a, b);
+  ) : t == 2 ? (
+    slider15 == 1 ? (
+      v = VOICE;
+      loop(NV, v[0] && v[7] == a && v[6] == 0 ? v[6] = rel_inc; v += VF; );
+    );
+  ) : t == 3 ? (
+    v = VOICE;
+    loop(NV, v[0] ? v[6] = fast_rel; v += VF; );
+  ) : t == 4 ? (
+    start_voice(a, slider11, 110);
+  );
+);
+
+function queue_event(ofs, t, a, b) local(e)
+(
+  evq_n < EVQMAX ? (
+    e = EVQ + evq_n*4;
+    e[0] = ofs; e[1] = t; e[2] = a; e[3] = b;
+    evq_n += 1;
+  );
+);
+
+// ---------- GUI helpers ----------
+function btn(x, y, w, h, label, active) local(hov, tw, th)
+(
+  hov = mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h;
+  active ? gfx_set(0.85, 0.55, 0.15, 1) : hov ? gfx_set(0.33, 0.33, 0.38, 1) : gfx_set(0.25, 0.25, 0.29, 1);
+  gfx_rect(x, y, w, h);
+  active ? gfx_set(0.1, 0.1, 0.1, 1) : gfx_set(0.88, 0.88, 0.92, 1);
+  gfx_measurestr(label, tw, th);
+  gfx_x = x + (w - tw) / 2; gfx_y = y + (h - th) / 2;
+  gfx_drawstr(label);
+  hov && clicked;
+);
+
+function basename(src, dst) local(i, c)
+(
+  i = strlen(src) - 1;
+  while (i >= 0 && (c = str_getchar(src, i)) != 47 && c != 92) ( i -= 1; );
+  strcpy_from(dst, src, i + 1);
+);
+
+@slider
+vol      = 10 ^ (slider17 / 20);
+velsens  = slider14 / 100;
+rel_inc  = 1 / max(1, slider16 * 0.001 * srate);
+fast_rel = 1 / max(1, 0.003 * srate);
+att_inc  = 1 / max(1, 0.0005 * srate);
+endfade_len = max(1, 0.004 * srate);
+slider9 < slider8 ? slider9 = slider8;
+redetect_pending = 1;
+redetect_t = blk_time;
+
+@block
+blk_time += samplesblock;
+
+// ---- load request from the companion script (Media Explorer) ----
+trig = slider20;
+trig > 0 && trig != last_trig && gmem[0] == trig ? (
+  last_trig = trig;
+  read_gmem_paths();
+  gmem[0] = 0;   // consumed: a stale request can never re-trigger (e.g. on project reload)
+  pend_n > 0 ? (
+    req_append = gmem[2] ? 1 : 0;
+    req_restore = 0;
+    req_load = 1;
+  );
+);
+
+req_clear ? (
+  req_clear = 0;
+  clear_data();
+  set_status();
+);
+
+req_load ? (
+  do_load();
+  req_load = 0; req_restore = 0;
+);
+
+// detection parameters changed (debounced while dragging sliders)
+(redetect_pending && blk_time - redetect_t > 0.25 * srate) || req_redetect ? (
+  redetect_pending = 0;
+  nfiles > 0 && (req_redetect || det_sig() != slices_sig) ? (
+    redetect_all();
+    set_status();
+  );
+  req_redetect = 0;
+);
+
+// ---- edits requested from the GUI ----
+req_edit ? (
+  req_edit == 1 ? (
+    // add split at frame edit_pos
+    efi = file_of_frame(edit_pos);
+    efi >= 0 ? (
+      es = slice_at(edit_pos);
+      es >= 0 ? (
+        edit_pos > SL_START[es] + 16 && edit_pos < SL_END[es] - 16 ? (
+          insert_slice(es + 1, edit_pos, SL_END[es], SL_FILE[es]);
+          SL_END[es] = edit_pos;
+        );
+      ) : (
+        // in a gap: create a new slice from here to the next slice / file end
+        ei = 0;
+        while (ei < nslices && SL_START[ei] < edit_pos) ( ei += 1; );
+        eend = FILE_START[efi] + FILE_LEN[efi];
+        ei < nslices && SL_START[ei] < eend ? eend = SL_START[ei];
+        eend > edit_pos + 16 ? insert_slice(ei, edit_pos, eend, efi);
+      );
+    );
+  ) : req_edit == 2 ? (
+    // remove nearest marker: merge slice with previous one (same file)
+    es = -1; ebest = 1e30; ei = 0;
+    loop(nslices,
+      abs(SL_START[ei] - edit_pos) < ebest ? ( ebest = abs(SL_START[ei] - edit_pos); es = ei; );
+      ei += 1;
+    );
+    es > 0 && SL_FILE[es] == SL_FILE[es-1] ? (
+      SL_END[es-1] = SL_END[es];
+      remove_slice(es);
+    );
+  ) : req_edit == 3 ? (
+    es = slice_at(edit_pos);
+    es >= 0 ? remove_slice(es);
+  );
+  req_edit = 0;
+  set_status();
+);
+
+// ---- MIDI ----
+evq_n = 0; evq_rd = 0; spos = 0;
+
+req_audition > 0 ? (
+  queue_event(0, 4, req_audition - 1, 0);
+  req_audition = 0;
+);
+
+while (midirecv(mofs, m1, m2, m3)) (
+  mst = m1 & 0xF0;
+  mch = m1 & 0x0F;
+  (slider7 == 0 || mch == slider7 - 1) ? (
+    mst == 0x90 && m3 > 0 ? (
+      m2 >= slider8 && m2 <= slider9 ? queue_event(mofs, 1, m2, m3);
+    ) : (mst == 0x80 || mst == 0x90) ? (
+      queue_event(mofs, 2, m2, 0);
+    ) : mst == 0xB0 && (m2 == 120 || m2 == 123) ? (
+      queue_event(mofs, 3, 0, 0);
+    );
+  );
+  midisend(mofs, m1, m2, m3);
+);
+
+@sample
+while (evq_rd < evq_n && EVQ[evq_rd*4] <= spos) (
+  handle_event(EVQ + evq_rd*4);
+  evq_rd += 1;
+);
+spos += 1;
+
+oL = 0; oR = 0;
+v = VOICE;
+loop(NV,
+  v[0] ? (
+    p  = v[1];
+    ip = p | 0;
+    fr = p - ip;
+    q  = BUF + ip*2;
+    l = q[0] + (q[2] - q[0]) * fr;
+    r = q[1] + (q[3] - q[1]) * fr;
+    env = v[5];
+    v[6] > 0 ? (
+      env -= v[6];
+    ) : env < 1 ? (
+      env += att_inc; env > 1 ? env = 1;
+    );
+    rem = (v[2] - p) / v[3];
+    g = v[4] * env * (rem < endfade_len ? rem / endfade_len : 1);
+    oL += l * g;
+    oR += r * g;
+    p += v[3];
+    v[1] = p;
+    v[5] = env;
+    (p >= v[2] || env <= 0) ? v[0] = 0;
+  );
+  v += VF;
+);
+spl0 = oL;
+spl1 = oR;
+
+@serialize
+s_rd = file_avail(0) >= 0;
+s_ver = 1;
+file_var(0, s_ver);
+s_rd ? (
+  s_n = 0;
+  file_var(0, s_n);
+  s_n = min(max(s_n | 0, 0), MAXFILES);
+  s_i = 0;
+  loop(s_n, file_string(0, 300 + s_i); s_i += 1; );
+  s_sn = 0;
+  file_var(0, s_sn);
+  s_sn = min(max(s_sn | 0, 0), MAXSL);
+  s_i = 0;
+  loop(s_sn,
+    file_var(0, s_t); SV_FILE[s_i] = s_t;
+    file_var(0, s_t); SV_S[s_i] = s_t;
+    file_var(0, s_t); SV_E[s_i] = s_t;
+    s_i += 1;
+  );
+  file_var(0, append_mode);
+  s_sig = -1;
+  file_var(0, s_sig);
+  s_n > 0 ? (
+    pend_n = s_n;
+    restore_n = s_sn;
+    restore_sig = s_sig;
+    req_append = 0;
+    req_restore = 1;
+    req_load = 1;
+  ) : nfiles > 0 ? (
+    req_clear = 1;
+  );
+) : (
+  s_n = nfiles;
+  file_var(0, s_n);
+  s_i = 0;
+  loop(s_n, file_string(0, 100 + s_i); s_i += 1; );
+  s_sn = nslices;
+  file_var(0, s_sn);
+  s_i = 0;
+  loop(s_sn,
+    s_f = SL_FILE[s_i];
+    s_t = s_f;                              file_var(0, s_t);
+    s_t = SL_START[s_i] - FILE_START[s_f];  file_var(0, s_t);
+    s_t = SL_END[s_i] - FILE_START[s_f];    file_var(0, s_t);
+    s_i += 1;
+  );
+  file_var(0, append_mode);
+  s_t = slices_sig;
+  file_var(0, s_t);
+);
+
+@gfx 760 380
+// ---------- colours & layout ----------
+gfx_clear = 0x1c1a18;
+gfx_setfont(1, "Arial", 14);
+gfx_setfont(2, "Arial", 12);
+
+clicked = (mouse_cap & 1) && !(g_lastcap & 1);
+rclicked = (mouse_cap & 2) && !(g_lastcap & 2);
+
+// ---------- drag & drop ----------
+gfx_getdropfile(0) ? (
+  g_n = 0;
+  while (g_n < MAXFILES && gfx_getdropfile(g_n, 300 + g_n)) ( g_n += 1; );
+  gfx_getdropfile(-1);
+  g_n > 0 ? (
+    pend_n = g_n;
+    req_append = (append_mode || (mouse_cap & 8)) ? 1 : 0;
+    req_restore = 0;
+    req_load = 1;
+    strcpy(#status, "Loading / analysing...");
+  );
+);
+
+// ---------- header ----------
+gfx_setfont(1);
+gfx_set(0.95, 0.65, 0.2, 1);
+gfx_x = 10; gfx_y = 8;
+gfx_drawstr("ONSET RR SAMPLER");
+gfx_set(0.8, 0.8, 0.82, 1);
+gfx_x += 14;
+gfx_drawstr(#status);
+nfiles > 0 ? (
+  basename(100, #g_name);
+  gfx_set(0.55, 0.55, 0.6, 1);
+  gfx_x += 14;
+  nfiles > 1 ? sprintf(#g_tmp, "%s  (+%d more)", #g_name, nfiles - 1) : strcpy(#g_tmp, #g_name);
+  gfx_drawstr(#g_tmp);
+);
+
+// ---------- waveform area ----------
+wx = 10; wy = 32; ww = max(50, gfx_w - 20); wh = max(40, gfx_h - wy - 66);
+gfx_set(0.12, 0.12, 0.13, 1);
+gfx_rect(wx, wy, ww, wh);
+
+trig_count != g_seen_trig ? ( g_seen_trig = trig_count; g_flash = 1; g_flash_slice = last_slice; );
+
+total > 0 ? (
+  // slices
+  gfx_setfont(2);
+  g_i = 0;
+  loop(nslices,
+    x1 = wx + SL_START[g_i] / total * ww;
+    x2 = wx + SL_END[g_i] / total * ww;
+    g_i == g_flash_slice && g_flash > 0 ? (
+      gfx_set(0.95, 0.6, 0.15, 0.15 + 0.45 * g_flash);
+    ) : (
+      g_i & 1 ? gfx_set(0.25, 0.42, 0.55, 0.35) : gfx_set(0.22, 0.5, 0.42, 0.35);
+    );
+    gfx_rect(x1, wy, max(1, x2 - x1), wh);
+    gfx_set(1, 0.75, 0.2, 0.9);
+    gfx_line(x1, wy, x1, wy + wh);
+    x2 - x1 > 14 ? (
+      gfx_set(1, 1, 1, 0.75);
+      gfx_x = x1 + 3; gfx_y = wy + 3;
+      gfx_drawnumber(g_i + 1, 0);
+    );
+    g_i += 1;
+  );
+
+  // waveform
+  g_mid = wy + wh / 2;
+  g_norm = peak_max > 0 ? 1 / peak_max : 1;
+  gfx_set(0.78, 0.82, 0.85, 0.9);
+  g_x = 0;
+  loop(ww,
+    b1 = floor(g_x / ww * PEAKN);
+    b2 = max(b1 + 1, floor((g_x + 1) / ww * PEAKN));
+    pk = 0; g_j = b1;
+    loop(b2 - b1, PEAK[g_j] > pk ? pk = PEAK[g_j]; g_j += 1; );
+    g_h = min(1, pk * g_norm) * wh * 0.46;
+    gfx_line(wx + g_x, g_mid - g_h, wx + g_x, g_mid + g_h);
+    g_x += 1;
+  );
+
+  // file boundaries
+  gfx_set(0.9, 0.3, 0.3, 0.9);
+  g_i = 1;
+  loop(nfiles - 1,
+    x1 = wx + FILE_START[g_i] / total * ww;
+    gfx_line(x1, wy, x1, wy + wh);
+    gfx_line(x1 + 1, wy, x1 + 1, wy + wh);
+    g_i += 1;
+  );
+
+  // playheads
+  gfx_set(1, 1, 1, 0.9);
+  g_v = VOICE;
+  loop(NV,
+    g_v[0] ? ( x1 = wx + g_v[1] / total * ww; gfx_line(x1, wy, x1, wy + wh); );
+    g_v += VF;
+  );
+
+  // next slice indicator (sequential mode)
+  slider6 == 0 && nslices > 0 ? (
+    g_s = rr_next < nslices ? rr_next : 0;
+    x1 = wx + SL_START[g_s] / total * ww;
+    gfx_set(1, 0.75, 0.2, 1);
+    gfx_triangle(x1 - 5, wy + wh, x1 + 5, wy + wh, x1, wy + wh - 8);
+  );
+
+  // mouse on waveform
+  mouse_x >= wx && mouse_x < wx + ww && mouse_y >= wy && mouse_y < wy + wh ? (
+    g_f = floor((mouse_x - wx) / ww * total);
+    gfx_set(1, 1, 1, 0.25);
+    gfx_line(mouse_x, wy, mouse_x, wy + wh);
+    clicked ? (
+      (mouse_cap & 8) ? ( edit_pos = g_f; req_edit = 1; )
+      : (mouse_cap & 16) ? ( edit_pos = g_f; req_edit = 2; )
+      : (
+        g_s = slice_at(g_f);
+        g_s >= 0 ? req_audition = g_s + 1;
+      );
+    );
+    rclicked ? ( edit_pos = g_f; req_edit = 3; );
+  );
+) : (
+  gfx_setfont(1);
+  gfx_set(0.5, 0.5, 0.55, 1);
+  strcpy(#g_tmp, "Drag one-shots or long multi-hit recordings here from the Media Explorer");
+  gfx_measurestr(#g_tmp, g_tw, g_th);
+  gfx_x = wx + (ww - g_tw) / 2; gfx_y = wy + wh / 2 - g_th;
+  gfx_drawstr(#g_tmp);
+  strcpy(#g_tmp, "(shift+drop or 'Append on drop' adds to existing files)");
+  gfx_measurestr(#g_tmp, g_tw, g_th);
+  gfx_x = wx + (ww - g_tw) / 2; gfx_y = wy + wh / 2 + 4;
+  gfx_drawstr(#g_tmp);
+);
+
+g_flash > 0 ? g_flash = max(0, g_flash - 0.06);
+
+// ---------- footer ----------
+gfx_setfont(2);
+by = wy + wh + 8;
+btn(wx, by, 90, 22, "Re-detect", 0) ? req_redetect = 1;
+btn(wx + 98, by, 70, 22, "Clear", 0) ? req_clear = 1;
+btn(wx + 176, by, 120, 22, "Append on drop", append_mode) ? append_mode = !append_mode;
+btn(wx + 304, by, 150, 22,
+    slider6 == 0 ? "Mode: Sequential" : slider6 == 1 ? "Mode: Random" :
+    slider6 == 2 ? "Mode: No repeat" : "Mode: Key-mapped", 0) ? (
+  slider6 = (slider6 + 1) % 4;
+  slider_automate(slider6);
+  shuf_n = 0; rr_next = 0;
+);
+
+gfx_set(0.55, 0.55, 0.6, 1);
+gfx_x = wx; gfx_y = by + 30;
+gfx_drawstr("Click: audition   Shift+click: add split   Alt+click: remove nearest split   Right-click: delete slice");
+
+g_lastcap = mouse_cap;
