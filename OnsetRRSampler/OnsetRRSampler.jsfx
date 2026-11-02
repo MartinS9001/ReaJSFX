@@ -251,7 +251,7 @@ function detect_file(fi) local(fs, fl, sr, hop, nfr, f, a, b, ms, p, thr, gate, 
     ms = 0; p = BUF + a*2;
     loop(b - a, ms += p[0]*p[0] + p[1]*p[1]; p += 2; );
     ms /= max(1, (b - a)*2);
-    ENV[f] = 10 * log10(ms + 1e-14);
+    ENV[f] = 10 * log10(ms + 0.00000000000001);
     f += 1;
   );
 
@@ -456,7 +456,7 @@ function pick_slice(note) local(n, s)
 function start_voice(s, note, vel) local(i, v, cnt, oldest, oldage, anyold, anyage, free, fi, pitch, g)
 (
   s >= 0 && s < nslices ? (
-    cnt = 0; oldest = -1; oldage = 1e30; anyold = 0; anyage = 1e30; free = -1;
+    cnt = 0; oldest = -1; oldage = 1000000000000; anyold = 0; anyage = 1000000000000; free = -1;
     i = 0; v = VOICE;
     loop(NV,
       v[0] ? (
@@ -614,7 +614,7 @@ req_edit ? (
     );
   ) : req_edit == 2 ? (
     // remove nearest marker: merge slice with previous one (same file)
-    es = -1; ebest = 1e30; ei = 0;
+    es = -1; ebest = 1000000000000; ei = 0;
     loop(nslices,
       abs(SL_START[ei] - edit_pos) < ebest ? ( ebest = abs(SL_START[ei] - edit_pos); es = ei; );
       ei += 1;
