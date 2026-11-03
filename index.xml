@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX" commit="957257a5ffd8c0bd5e12fb0a7a8e60b862402be5">
+<index version="1" name="Marcins JSFX" commit="3c3359365e5e879e7b5fcfd0dfba481bf9432930">
   <category name="Allpass">
     <reapack name="Allpass.jsfx" type="effect" desc="Allpass filter">
       <metadata>
@@ -39,7 +39,7 @@
   <category name="Compressor">
     <reapack name="Compressor.jsfx" type="effect" desc="MCompressor">
       <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
@@ -87,6 +87,52 @@
       <version name="1.0.0" author="Marcin Sobczak" time="2019-06-23T10:42:25Z">
         <changelog><![CDATA[Initial release]]></changelog>
         <source>https://github.com/MartinS9001/ReaJSFX/raw/2550cdbabdfdce70b65c1381aa55e84c12ed0e37/LowPassFilter/LPF.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="OnsetRRSampler">
+    <reapack name="OnsetRRSampler.jsfx" type="effect" desc="Onset Round-Robin Sampler">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Onset Round-Robin Sampler\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Drop one or more audio files (straight from REAPER's Media Explorer, or from Explorer/Finder) onto the plugin window. Long files containing many one-shots (e.g. 20 footstep variations in one take) are split automatically with onset detection. Incoming MIDI notes then cycle through the detected hits (sequential, random, random-without-repeat or key-mapped).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Companion actions "OnsetRR - Load Media Explorer selection" and "OnsetRR - Append Media Explorer selection" send the files selected in the Media Explorer to the sampler on the selected track (needs js_ReaScriptAPI for reading the Media Explorer selection; falls back to selected items / a file dialog).\par}
+}
+]]></description>
+        <link rel="website">https://github.com/MartinS9001/ReaJSFX</link>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak" time="2026-10-31T10:50:21Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/dfd4f8e4e751f3c8ca8914b38c02b373ebd0ee58/OnsetRRSampler/OnsetRRSampler.jsfx</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/dfd4f8e4e751f3c8ca8914b38c02b373ebd0ee58/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/dfd4f8e4e751f3c8ca8914b38c02b373ebd0ee58/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
+      </version>
+      <version name="1.0.1" author="Marcin Sobczak" time="2026-11-03T07:44:41Z">
+        <changelog><![CDATA[- Fix memory corruption (loud noise bursts) after re-analysing/re-importing while voices had played
+- Output safety guard against NaN/runaway levels]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRRSampler.jsfx</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="TheDrop">
+    <reapack name="TheDrop.jsfx" type="effect" desc="The Drop">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Bass enhancement plugin #The Drop bass enhancement plugin From gentle harmonics to fat saturation\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Marcin Sobczak from Glitch Hackers" time="2022-12-11T23:41:52Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/e470a2505d36fb7256c73747b16dc4644d2fc061/TheDrop/TheDrop.jsfx</source>
       </version>
     </reapack>
   </category>
