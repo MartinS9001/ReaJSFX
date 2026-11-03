@@ -1,5 +1,5 @@
 desc: Onset Round-Robin Sampler
-version: 1.0.0
+version: 1.0.1
 author: Marcin Sobczak
 about:
   # Onset Round-Robin Sampler
@@ -14,7 +14,9 @@ about:
   Media Explorer to the sampler on the selected track (needs js_ReaScriptAPI
   for reading the Media Explorer selection; falls back to selected items /
   a file dialog).
-changelog: Initial release
+changelog:
+  - Fix memory corruption (loud noise bursts) after re-analysing/re-importing while voices had played
+  - Output safety guard against NaN/runaway levels
 provides:
   [script main=main,mediaexplorer] OnsetRR - Load Media Explorer selection.lua
   [script main=main,mediaexplorer] OnsetRR - Append Media Explorer selection.lua
@@ -661,6 +663,8 @@ while (evq_rd < evq_n && EVQ[evq_rd*4] <= spos) (
 );
 spos += 1;
 
+// NOTE: EEL2 names are case-insensitive - never call a variable env/buf/peak/... here,
+// it would overwrite the ENV/BUF/PEAK memory pointers.
 oL = 0; oR = 0;
 v = VOICE;
 loop(NV,
@@ -671,23 +675,25 @@ loop(NV,
     q  = BUF + ip*2;
     l = q[0] + (q[2] - q[0]) * fr;
     r = q[1] + (q[3] - q[1]) * fr;
-    env = v[5];
+    venv = v[5];
     v[6] > 0 ? (
-      env -= v[6];
-    ) : env < 1 ? (
-      env += att_inc; env > 1 ? env = 1;
+      venv -= v[6];
+    ) : venv < 1 ? (
+      venv += att_inc; venv > 1 ? venv = 1;
     );
     rem = (v[2] - p) / v[3];
-    g = v[4] * env * (rem < endfade_len ? rem / endfade_len : 1);
+    g = v[4] * venv * (rem < endfade_len ? rem / endfade_len : 1);
     oL += l * g;
     oR += r * g;
     p += v[3];
     v[1] = p;
-    v[5] = env;
-    (p >= v[2] || env <= 0) ? v[0] = 0;
+    v[5] = venv;
+    (p >= v[2] || venv <= 0) ? v[0] = 0;
   );
   v += VF;
 );
+// safety: never pass NaN/inf or runaway levels to the output
+!(abs(oL) <= 8 && abs(oR) <= 8) ? ( oL = 0; oR = 0; );   // NaN fails every comparison
 spl0 = oL;
 spl1 = oR;
 
