@@ -36,6 +36,7 @@ In the Reaper resource folder go to effects and copy downloaded effects into the
 * **Load from the Media Explorer:** drag one or more files from the Media Explorer (or from Explorer/Finder) onto the plugin window. Hold **Shift** while dropping, or turn on *Append on drop*, to add files to the ones already loaded.
 * **Automatic onset detection:** a long file with many hits (e.g. 20 footstep variations) is split into separate slices. Adjust *Onset sensitivity*, *Gate threshold*, *Min. time between hits*, *Pre-roll* and *Trim silent tails* until the markers fit. The analysis runs again when you change any of these.
 * **Round robin:** every incoming note plays the next slice. Modes: *Sequential*, *Random*, *Random (no repeat)* (a shuffle that never plays the same hit twice in a row) and *Key-mapped* (lowest note = slice 1, the next note = slice 2, …).
+* **Envelope and rate:** *Attack* sets the fade-in at the start of each hit (0 ms = instant). *Playback rate* transposes all hits by ±24 semitones, including notes that are already playing, and MIDI pitch bend bends the rate within *Pitch bend range*.
 * **Humanising:** random pitch (cents), random gain (dB), velocity sensitivity, optional pitch tracking around a root note.
 * **Playback:** one-shot or release on note-off, polyphony limit with voice stealing, MIDI channel filter and note range.
 * **Editing on the waveform:** click to audition a slice, Shift+click to add a split, Alt+click to remove the nearest split, right-click to delete a slice.
