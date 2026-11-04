@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX" commit="ef3793bcb0b0f04cd4cd5a967391883deed3a224">
+<index version="1" name="Marcins JSFX" commit="d9e2677f59945f5af4d9578be56437aeb3752631">
   <category name="Allpass">
     <reapack name="Allpass.jsfx" type="effect" desc="Allpass filter">
       <metadata>
@@ -133,6 +133,14 @@
         <source>https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRRSampler.jsfx</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
+      </version>
+      <version name="1.3.0" author="Marcin Sobczak" time="2026-11-04T09:31:14Z">
+        <changelog><![CDATA[- All settings are now shown in the plugin window as a grouped control panel
+  (drag / mouse wheel to change, Shift = fine, double-click or right-click = default).
+  REAPER's slider list is hidden; the parameters remain automatable.]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/194992ead835de168d4df3f24c72c858ff2ed8ea/OnsetRRSampler/OnsetRRSampler.jsfx</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/194992ead835de168d4df3f24c72c858ff2ed8ea/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/194992ead835de168d4df3f24c72c858ff2ed8ea/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
       </version>
     </reapack>
   </category>
