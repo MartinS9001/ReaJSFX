@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX" commit="3c3359365e5e879e7b5fcfd0dfba481bf9432930">
+<index version="1" name="Marcins JSFX" commit="d738e91a71b6431abe7449de0e341ec79eb05787">
   <category name="Allpass">
     <reapack name="Allpass.jsfx" type="effect" desc="Allpass filter">
       <metadata>
@@ -116,6 +116,16 @@
         <source>https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRRSampler.jsfx</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/fbc480a1f27badd9465bd2bd34730d4d73524792/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
+      </version>
+      <version name="1.1.0" author="Marcin Sobczak" time="2026-11-03T11:55:43Z">
+        <changelog><![CDATA[- Attack parameter (initial envelope fade-in)
+- Playback rate control (semitones, applies live to playing notes)
+- MIDI pitch bend bends the playback rate (adjustable range)
+- Fix memory corruption (loud noise bursts) after re-analysing/re-importing while voices had played
+- Output safety guard against NaN/runaway levels]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRRSampler.jsfx</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
       </version>
     </reapack>
   </category>
