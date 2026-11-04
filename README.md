@@ -39,6 +39,7 @@ In the Reaper resource folder go to effects and copy downloaded effects into the
 * **Envelope and rate:** *Attack* sets the fade-in at the start of each hit (0 ms = instant). *Playback rate* transposes all hits by ±24 semitones, including notes that are already playing, and MIDI pitch bend bends the rate within *Pitch bend range*.
 * **Humanising:** random pitch (cents), random gain (dB), velocity sensitivity, optional pitch tracking around a root note.
 * **Playback:** one-shot, release, or *Jump to tail* on note-off. *Jump to tail* crossfades the playback cursor to the last *Tail length* ms of the slice, over *Tail crossfade* ms, so a short note still ends with the sound's natural ending. Also: polyphony limit with voice stealing, MIDI channel filter and note range.
+* **Control panel:** every setting is in the plugin window, grouped into Detection, Playback, Envelope / Note-off and MIDI / Humanize. Drag or use the mouse wheel to change a value, hold Shift for fine steps, and double-click or right-click to reset it to the default. List settings change with a click. All settings are still REAPER parameters you can automate.
 * **Editing on the waveform:** click to audition a slice, Shift+click to add a split, Alt+click to remove the nearest split, right-click to delete a slice.
 * The loaded file paths and the slices, including your manual edits, are saved with the project. The audio is read from disk again when the project opens, so keep the files where they are.
 
