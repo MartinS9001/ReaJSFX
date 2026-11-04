@@ -38,7 +38,7 @@ In the Reaper resource folder go to effects and copy downloaded effects into the
 * **Round robin:** every incoming note plays the next slice. Modes: *Sequential*, *Random*, *Random (no repeat)* (a shuffle that never plays the same hit twice in a row) and *Key-mapped* (lowest note = slice 1, the next note = slice 2, …).
 * **Envelope and rate:** *Attack* sets the fade-in at the start of each hit (0 ms = instant). *Playback rate* transposes all hits by ±24 semitones, including notes that are already playing, and MIDI pitch bend bends the rate within *Pitch bend range*.
 * **Humanising:** random pitch (cents), random gain (dB), velocity sensitivity, optional pitch tracking around a root note.
-* **Playback:** one-shot or release on note-off, polyphony limit with voice stealing, MIDI channel filter and note range.
+* **Playback:** one-shot, release, or *Jump to tail* on note-off. *Jump to tail* crossfades the playback cursor to the last *Tail length* ms of the slice, over *Tail crossfade* ms, so a short note still ends with the sound's natural ending. Also: polyphony limit with voice stealing, MIDI channel filter and note range.
 * **Editing on the waveform:** click to audition a slice, Shift+click to add a split, Alt+click to remove the nearest split, right-click to delete a slice.
 * The loaded file paths and the slices, including your manual edits, are saved with the project. The audio is read from disk again when the project opens, so keep the files where they are.
 
