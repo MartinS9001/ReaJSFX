@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Marcins JSFX" commit="d738e91a71b6431abe7449de0e341ec79eb05787">
+<index version="1" name="Marcins JSFX" commit="ef3793bcb0b0f04cd4cd5a967391883deed3a224">
   <category name="Allpass">
     <reapack name="Allpass.jsfx" type="effect" desc="Allpass filter">
       <metadata>
@@ -126,6 +126,13 @@
         <source>https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRRSampler.jsfx</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
         <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/798a6ae9e079624e7ee7adeee9b3b830c3b1f0b3/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
+      </version>
+      <version name="1.2.0" author="Marcin Sobczak" time="2026-11-04T09:07:32Z">
+        <changelog><![CDATA[- New note-off mode "Jump to tail": on note-off the playback cursor crossfades to the
+  ending part of the slice (length set by "Tail length", blend time by "Tail crossfade")]]></changelog>
+        <source>https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRRSampler.jsfx</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Load Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRR%20-%20Load%20Media%20Explorer%20selection.lua</source>
+        <source main="main mediaexplorer" type="script" file="OnsetRR - Append Media Explorer selection.lua">https://github.com/MartinS9001/ReaJSFX/raw/eb90286d47c7d91f7cc071db7535b72d60859fa0/OnsetRRSampler/OnsetRR%20-%20Append%20Media%20Explorer%20selection.lua</source>
       </version>
     </reapack>
   </category>
