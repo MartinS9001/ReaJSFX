@@ -1,5 +1,5 @@
 desc: Onset Round-Robin Sampler
-version: 1.0.1
+version: 1.1.0
 author: Marcin Sobczak
 about:
   # Onset Round-Robin Sampler
@@ -15,6 +15,9 @@ about:
   for reading the Media Explorer selection; falls back to selected items /
   a file dialog).
 changelog:
+  - Attack parameter (initial envelope fade-in)
+  - Playback rate control (semitones, applies live to playing notes)
+  - MIDI pitch bend bends the playback rate (adjustable range)
   - Fix memory corruption (loud noise bursts) after re-analysing/re-importing while voices had played
   - Output safety guard against NaN/runaway levels
 provides:
@@ -56,7 +59,10 @@ slider15:0<0,1,1{One-shot (ignore),Release}>Note-off
 slider16:40<1,2000,1>Release (ms)
 slider17:0<-48,12,0.1>Volume (dB)
 slider18:16<1,32,1>Polyphony
+slider19:0.5<0,2000,0.1>Attack (ms)
 slider20:0<0,1000000,1>-Remote load (internal)
+slider21:0<-24,24,0.01>Playback rate (semitones)
+slider22:2<0,24,1>Pitch bend range (semitones)
 
 options:gmem=ReaJSFX_OnsetRR
 options:maxmem=33554432
@@ -109,6 +115,7 @@ req_load = req_restore = req_append = req_clear = req_redetect = 0;
 req_edit = 0; req_audition = 0;
 redetect_pending = 0; blk_time = 0;
 slices_sig = -1; last_trig = slider20;
+pb_val = 0; rate_mul = 1;
 memset(VOICE, 0, NV*VF);
 strcpy(#status, "Drop audio files here (from Media Explorer, Explorer or Finder)");
 
@@ -550,7 +557,8 @@ vol      = 10 ^ (slider17 / 20);
 velsens  = slider14 / 100;
 rel_inc  = 1 / max(1, slider16 * 0.001 * srate);
 fast_rel = 1 / max(1, 0.003 * srate);
-att_inc  = 1 / max(1, 0.0005 * srate);
+att_inc  = 1 / max(1, slider19 * 0.001 * srate);   // 0 ms -> instant
+rate_mul = 2 ^ ((slider21 + pb_val * slider22) / 12);
 endfade_len = max(1, 0.004 * srate);
 slider9 < slider8 ? slider9 = slider8;
 redetect_pending = 1;
@@ -651,6 +659,9 @@ while (midirecv(mofs, m1, m2, m3)) (
       queue_event(mofs, 2, m2, 0);
     ) : mst == 0xB0 && (m2 == 120 || m2 == 123) ? (
       queue_event(mofs, 3, 0, 0);
+    ) : mst == 0xE0 ? (
+      pb_val = ((m3 * 128 + m2) - 8192) / 8192;
+      rate_mul = 2 ^ ((slider21 + pb_val * slider22) / 12);
     );
   );
   midisend(mofs, m1, m2, m3);
@@ -681,11 +692,12 @@ loop(NV,
     ) : venv < 1 ? (
       venv += att_inc; venv > 1 ? venv = 1;
     );
-    rem = (v[2] - p) / v[3];
+    vstep = v[3] * rate_mul;          // per-voice rate x global playback rate / pitch bend
+    rem = (v[2] - p) / vstep;
     g = v[4] * venv * (rem < endfade_len ? rem / endfade_len : 1);
     oL += l * g;
     oR += r * g;
-    p += v[3];
+    p += vstep;
     v[1] = p;
     v[5] = venv;
     (p >= v[2] || venv <= 0) ? v[0] = 0;
