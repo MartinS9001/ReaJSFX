@@ -1,5 +1,5 @@
 desc: Onset Round-Robin Sampler
-version: 1.1.0
+version: 1.2.0
 author: Marcin Sobczak
 about:
   # Onset Round-Robin Sampler
@@ -15,11 +15,8 @@ about:
   for reading the Media Explorer selection; falls back to selected items /
   a file dialog).
 changelog:
-  - Attack parameter (initial envelope fade-in)
-  - Playback rate control (semitones, applies live to playing notes)
-  - MIDI pitch bend bends the playback rate (adjustable range)
-  - Fix memory corruption (loud noise bursts) after re-analysing/re-importing while voices had played
-  - Output safety guard against NaN/runaway levels
+  - New note-off mode "Jump to tail": on note-off the playback cursor crossfades to the
+    ending part of the slice (length set by "Tail length", blend time by "Tail crossfade")
 provides:
   [script main=main,mediaexplorer] OnsetRR - Load Media Explorer selection.lua
   [script main=main,mediaexplorer] OnsetRR - Append Media Explorer selection.lua
@@ -55,7 +52,7 @@ slider11:60<0,127,1>Root note
 slider12:0<0,200,1>Random pitch (+/- cents)
 slider13:0<0,12,0.1>Random gain (+/- dB)
 slider14:50<0,100,1>Velocity sensitivity (%)
-slider15:0<0,1,1{One-shot (ignore),Release}>Note-off
+slider15:0<0,2,1{One-shot (ignore),Release,Jump to tail}>Note-off
 slider16:40<1,2000,1>Release (ms)
 slider17:0<-48,12,0.1>Volume (dB)
 slider18:16<1,32,1>Polyphony
@@ -63,6 +60,8 @@ slider19:0.5<0,2000,0.1>Attack (ms)
 slider20:0<0,1000000,1>-Remote load (internal)
 slider21:0<-24,24,0.01>Playback rate (semitones)
 slider22:2<0,24,1>Pitch bend range (semitones)
+slider23:150<1,5000,1>Tail length (ms)
+slider24:20<1,500,1>Tail crossfade (ms)
 
 options:gmem=ReaJSFX_OnsetRR
 options:maxmem=33554432
@@ -79,7 +78,7 @@ ext_noinit = 1;
 MAXFILES   = 64;
 MAXSL      = 1024;
 NV         = 40;        // voice slots (polyphony + room for fading voices)
-VF         = 12;        // fields per voice
+VF         = 12;        // fields per voice (10 = outgoing cursor, 11 = crossfade amount)
 EVQMAX     = 512;
 PEAKN      = 2048;
 
@@ -500,6 +499,8 @@ function start_voice(s, note, vel) local(i, v, cnt, oldest, oldage, anyold, anya
     v[7] = note;
     v[8] = s;
     v[9] = vcounter;
+    v[10] = 0;
+    v[11] = 0;
     last_slice = s;
     trig_count += 1;
   );
@@ -514,6 +515,21 @@ function handle_event(e) local(t, a, b, i, v)
     slider15 == 1 ? (
       v = VOICE;
       loop(NV, v[0] && v[7] == a && v[6] == 0 ? v[6] = rel_inc; v += VF; );
+    ) : slider15 == 2 ? (
+      // jump to tail: crossfade from the current cursor to the last 'Tail length' ms of the slice
+      v = VOICE;
+      loop(NV,
+        v[0] && v[7] == a && v[6] == 0 ? (
+          i = v[2] - floor(slider23 * 0.001 * FILE_RATE[SL_FILE[v[8]]]);   // tail start (source frames)
+          i > v[1] ? (
+            v[10] = v[1];      // outgoing cursor keeps playing while it fades out
+            v[11] = 1;
+            v[1] = i;          // main cursor jumps to the tail
+          );
+          v[7] = -1;           // handled: ignore further note-offs for this voice
+        );
+        v += VF;
+      );
     );
   ) : t == 3 ? (
     v = VOICE;
@@ -560,6 +576,7 @@ fast_rel = 1 / max(1, 0.003 * srate);
 att_inc  = 1 / max(1, slider19 * 0.001 * srate);   // 0 ms -> instant
 rate_mul = 2 ^ ((slider21 + pb_val * slider22) / 12);
 endfade_len = max(1, 0.004 * srate);
+xf_inc   = 1 / max(1, slider24 * 0.001 * srate);
 slider9 < slider8 ? slider9 = slider8;
 redetect_pending = 1;
 redetect_t = blk_time;
@@ -693,6 +710,16 @@ loop(NV,
       venv += att_inc; venv > 1 ? venv = 1;
     );
     vstep = v[3] * rate_mul;          // per-voice rate x global playback rate / pitch bend
+    v[11] > 0 ? (
+      // equal-power crossfade: outgoing cursor (v[10]) -> tail (v[1])
+      xo = v[10]; xi = xo | 0; xq = BUF + xi*2; xfr = xo - xi;
+      xa = sin(v[11] * 1.5707963267949);   // outgoing gain
+      xb = cos(v[11] * 1.5707963267949);   // incoming gain
+      l = l * xb + (xq[0] + (xq[2] - xq[0]) * xfr) * xa;
+      r = r * xb + (xq[1] + (xq[3] - xq[1]) * xfr) * xa;
+      v[10] = xo + vstep;
+      v[11] = max(0, v[11] - xf_inc);
+    );
     rem = (v[2] - p) / vstep;
     g = v[4] * venv * (rem < endfade_len ? rem / endfade_len : 1);
     oL += l * g;
