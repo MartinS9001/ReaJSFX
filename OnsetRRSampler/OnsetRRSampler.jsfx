@@ -1,5 +1,5 @@
 desc: Onset Round-Robin Sampler
-version: 1.2.0
+version: 1.3.0
 author: Marcin Sobczak
 about:
   # Onset Round-Robin Sampler
@@ -15,8 +15,9 @@ about:
   for reading the Media Explorer selection; falls back to selected items /
   a file dialog).
 changelog:
-  - New note-off mode "Jump to tail": on note-off the playback cursor crossfades to the
-    ending part of the slice (length set by "Tail length", blend time by "Tail crossfade")
+  - All settings are now shown in the plugin window as a grouped control panel
+    (drag / mouse wheel to change, Shift = fine, double-click or right-click = default).
+    REAPER's slider list is hidden; the parameters remain automatable.
 provides:
   [script main=main,mediaexplorer] OnsetRR - Load Media Explorer selection.lua
   [script main=main,mediaexplorer] OnsetRR - Append Media Explorer selection.lua
@@ -38,30 +39,30 @@ link: https://github.com/MartinS9001/ReaJSFX
 //   * Changing any of the detection sliders re-runs the analysis
 //     (this discards manual edits).
 
-slider1:9<1,30,0.5>Onset sensitivity (dB rise)
-slider2:-45<-90,-10,1>Gate threshold (dB)
-slider3:80<10,1000,1>Min. time between hits (ms)
-slider4:3<0,30,0.5>Pre-roll (ms)
-slider5:1<0,1,1{Off,On}>Trim silent tails
-slider6:2<0,3,1{Sequential,Random,Random (no repeat),Key-mapped}>Round-robin mode
-slider7:0<0,16,1{Omni,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}>MIDI channel
-slider8:0<0,127,1>Lowest note
-slider9:127<0,127,1>Highest note
-slider10:0<0,1,1{Off,On}>Pitch follows key
-slider11:60<0,127,1>Root note
-slider12:0<0,200,1>Random pitch (+/- cents)
-slider13:0<0,12,0.1>Random gain (+/- dB)
-slider14:50<0,100,1>Velocity sensitivity (%)
-slider15:0<0,2,1{One-shot (ignore),Release,Jump to tail}>Note-off
-slider16:40<1,2000,1>Release (ms)
-slider17:0<-48,12,0.1>Volume (dB)
-slider18:16<1,32,1>Polyphony
-slider19:0.5<0,2000,0.1>Attack (ms)
+slider1:9<1,30,0.5>-Onset sensitivity (dB rise)
+slider2:-45<-90,-10,1>-Gate threshold (dB)
+slider3:80<10,1000,1>-Min. time between hits (ms)
+slider4:3<0,30,0.5>-Pre-roll (ms)
+slider5:1<0,1,1{Off,On}>-Trim silent tails
+slider6:2<0,3,1{Sequential,Random,Random (no repeat),Key-mapped}>-Round-robin mode
+slider7:0<0,16,1{Omni,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}>-MIDI channel
+slider8:0<0,127,1>-Lowest note
+slider9:127<0,127,1>-Highest note
+slider10:0<0,1,1{Off,On}>-Pitch follows key
+slider11:60<0,127,1>-Root note
+slider12:0<0,200,1>-Random pitch (+/- cents)
+slider13:0<0,12,0.1>-Random gain (+/- dB)
+slider14:50<0,100,1>-Velocity sensitivity (%)
+slider15:0<0,2,1{One-shot (ignore),Release,Jump to tail}>-Note-off
+slider16:40<1,2000,1>-Release (ms)
+slider17:0<-48,12,0.1>-Volume (dB)
+slider18:16<1,32,1>-Polyphony
+slider19:0.5<0,2000,0.1>-Attack (ms)
 slider20:0<0,1000000,1>-Remote load (internal)
-slider21:0<-24,24,0.01>Playback rate (semitones)
-slider22:2<0,24,1>Pitch bend range (semitones)
-slider23:150<1,5000,1>Tail length (ms)
-slider24:20<1,500,1>Tail crossfade (ms)
+slider21:0<-24,24,0.01>-Playback rate (semitones)
+slider22:2<0,24,1>-Pitch bend range (semitones)
+slider23:150<1,5000,1>-Tail length (ms)
+slider24:20<1,500,1>-Tail crossfade (ms)
 
 options:gmem=ReaJSFX_OnsetRR
 options:maxmem=33554432
@@ -548,6 +549,164 @@ function queue_event(ofs, t, a, b) local(e)
   );
 );
 
+function update_params()
+(
+  vol      = 10 ^ (slider17 / 20);
+  velsens  = slider14 / 100;
+  rel_inc  = 1 / max(1, slider16 * 0.001 * srate);
+  fast_rel = 1 / max(1, 0.003 * srate);
+  att_inc  = 1 / max(1, slider19 * 0.001 * srate);   // 0 ms -> instant
+  rate_mul = 2 ^ ((slider21 + pb_val * slider22) / 12);
+  endfade_len = max(1, 0.004 * srate);
+  xf_inc   = 1 / max(1, slider24 * 0.001 * srate);
+  slider9 < slider8 ? slider9 = slider8;
+  redetect_pending = 1;
+  redetect_t = blk_time;
+);
+
+
+// ---------- parameter panel definitions ----------
+// fields: 0 slider index, 1 min, 2 max, 3 step, 4 default, 5 decimals,
+//         6 kind (0 number, 1 list, 2 note name, 3 MIDI channel), 7 group
+PDEF = 16500;
+PF   = 8;
+NP   = 0;
+function def_p(sl, mn, mx, st, df, dec, kind, grp, label, unit) local(d)
+(
+  d = PDEF + NP*PF;
+  d[0] = sl; d[1] = mn; d[2] = mx; d[3] = st; d[4] = df; d[5] = dec; d[6] = kind; d[7] = grp;
+  strcpy(500 + NP, label);
+  strcpy(540 + NP, unit);
+  NP += 1;
+  NP - 1;
+);
+function opt(k, i, txt) ( strcpy(600 + k*8 + i, txt); );
+
+strcpy(590, "DETECTION"); strcpy(591, "PLAYBACK"); strcpy(592, "ENVELOPE / NOTE-OFF"); strcpy(593, "MIDI / HUMANIZE");
+
+def_p(1, 1, 30, 0.5, 9, 1, 0, 0, "Sensitivity", "dB");
+def_p(2, -90, -10, 1, -45, 0, 0, 0, "Gate", "dB");
+def_p(3, 10, 1000, 1, 80, 0, 0, 0, "Min gap", "ms");
+def_p(4, 0, 30, 0.5, 3, 1, 0, 0, "Pre-roll", "ms");
+k = def_p(5, 0, 1, 1, 1, 0, 1, 0, "Trim tails", ""); opt(k, 0, "Off"); opt(k, 1, "On");
+
+k = def_p(6, 0, 3, 1, 2, 0, 1, 1, "Mode", "");
+opt(k, 0, "Sequential"); opt(k, 1, "Random"); opt(k, 2, "No repeat"); opt(k, 3, "Key-mapped");
+def_p(21, -24, 24, 0.01, 0, 2, 0, 1, "Rate", "st");
+k = def_p(10, 0, 1, 1, 0, 0, 1, 1, "Follow key", ""); opt(k, 0, "Off"); opt(k, 1, "On");
+def_p(11, 0, 127, 1, 60, 0, 2, 1, "Root note", "");
+def_p(18, 1, 32, 1, 16, 0, 0, 1, "Polyphony", "");
+def_p(17, -48, 12, 0.1, 0, 1, 0, 1, "Volume", "dB");
+
+def_p(19, 0, 2000, 0.1, 0.5, 1, 0, 2, "Attack", "ms");
+k = def_p(15, 0, 2, 1, 0, 0, 1, 2, "Note-off", ""); opt(k, 0, "One-shot"); opt(k, 1, "Release"); opt(k, 2, "Jump to tail");
+def_p(16, 1, 2000, 1, 40, 0, 0, 2, "Release", "ms");
+def_p(23, 1, 5000, 1, 150, 0, 0, 2, "Tail length", "ms");
+def_p(24, 1, 500, 1, 20, 0, 0, 2, "Tail xfade", "ms");
+
+def_p(7, 0, 16, 1, 0, 0, 3, 3, "MIDI channel", "");
+def_p(8, 0, 127, 1, 0, 0, 2, 3, "Lowest note", "");
+def_p(9, 0, 127, 1, 127, 0, 2, 3, "Highest note", "");
+def_p(22, 0, 24, 1, 2, 0, 0, 3, "Bend range", "st");
+def_p(12, 0, 200, 1, 0, 0, 0, 3, "Rnd pitch", "ct");
+def_p(13, 0, 12, 0.1, 0, 1, 0, 3, "Rnd gain", "dB");
+def_p(14, 0, 100, 1, 50, 0, 0, 3, "Vel. sens.", "%");
+
+// set a parameter from the UI: quantize, clamp, notify REAPER, recompute
+function set_param(k, val) local(d, sl)
+(
+  d = PDEF + k*PF;
+  sl = d[0];
+  d[3] > 0 ? val = floor(val / d[3] + 0.5) * d[3];
+  val = min(d[2], max(d[1], val));
+  val != slider(sl) ? (
+    slider(sl) = val;
+    slider_automate(2 ^ (sl - 1));
+    sl == 6 ? ( shuf_n = 0; rr_next = 0; );
+    update_params();
+  );
+);
+
+// value text of parameter k into string dst
+function fmt_param(k, dst) local(d, v, n)
+(
+  d = PDEF + k*PF;
+  v = slider(d[0]);
+  d[6] == 1 ? (
+    strcpy(dst, 600 + k*8 + (v|0));
+  ) : d[6] == 2 ? (
+    n = v|0;
+    strcpy_substr(dst, "C C#D D#E F F#G G#A A#B ", (n % 12) * 2, 2);
+    str_getchar(dst, 1) == 32 ? str_setlen(dst, 1);
+    sprintf(#fmt_tmp, "%d (%d)", floor(n / 12) - 1, n);
+    strcat(dst, #fmt_tmp);
+  ) : d[6] == 3 ? (
+    v < 1 ? strcpy(dst, "Omni") : sprintf(dst, "%d", v|0);
+  ) : (
+    d[5] == 0 ? sprintf(dst, "%.0f", v) : d[5] == 1 ? sprintf(dst, "%.1f", v) : sprintf(dst, "%.2f", v);
+    d[1] < 0 && v > 0 ? ( strcpy(#fmt_tmp, "+"); strcat(#fmt_tmp, dst); strcpy(dst, #fmt_tmp); );
+    strlen(540 + k) > 0 ? ( strcat(dst, " "); strcat(dst, 540 + k); );
+  );
+);
+
+// one control row: label + bar; handles click / drag / wheel / reset
+function param_row(k, x, y, w, h) local(d, v, lw, bx, bw, hov, t, frac, z, tw, th, now)
+(
+  d = PDEF + k*PF;
+  v = slider(d[0]);
+  lw = floor(w * 0.42);
+  bx = x + lw; bw = w - lw;
+  hov = mouse_x >= bx && mouse_x < bx + bw && mouse_y >= y && mouse_y < y + h;
+
+  gfx_set(0.72, 0.72, 0.76, 1);
+  gfx_x = x; gfx_y = y + 3;
+  gfx_drawstr(500 + k);
+
+  gfx_set(hov || g_drag == k + 1 ? 0.24 : 0.19, hov || g_drag == k + 1 ? 0.24 : 0.19, hov || g_drag == k + 1 ? 0.27 : 0.21, 1);
+  gfx_rect(bx, y, bw, h - 2);
+  d[6] != 1 && d[6] != 3 ? (
+    frac = (v - d[1]) / (d[2] - d[1]);
+    z = d[1] < 0 && d[2] > 0 ? (0 - d[1]) / (d[2] - d[1]) : 0;   // bipolar: fill from zero
+    gfx_set(0.85, 0.55, 0.15, 0.55);
+    gfx_rect(bx + bw * min(z, frac), y, max(1, bw * abs(frac - z)), h - 2);
+  ) : (
+    gfx_set(0.85, 0.55, 0.15, 0.9);
+    gfx_triangle(bx + bw - 10, y + 6, bx + bw - 4, y + 6, bx + bw - 7, y + h - 7);
+  );
+  fmt_param(k, #pv);
+  gfx_set(0.95, 0.95, 0.97, 1);
+  gfx_measurestr(#pv, tw, th);
+  gfx_x = bx + (bw - tw) / 2; gfx_y = y + (h - 2 - th) / 2;
+  gfx_drawstr(#pv);
+
+  hov ? (
+    clicked ? (
+      now = time_precise();
+      g_lastk == k && now - g_lastt < 0.3 && d[6] != 1 ? (
+        set_param(k, d[4]);                       // double-click: default
+        g_drag = 0;
+      ) : d[6] == 1 ? (
+        set_param(k, v + 1 > d[2] ? d[1] : v + 1); // list: next option
+      ) : (
+        g_drag = k + 1; g_dx0 = mouse_x; g_dv0 = v; g_dw = bw;
+      );
+      g_lastk = k; g_lastt = now;
+    );
+    rclicked ? (
+      d[6] == 1 ? set_param(k, v - 1 < d[1] ? d[2] : v - 1) : set_param(k, d[4]);
+    );
+    mouse_wheel != 0 ? (
+      t = mouse_wheel > 0 ? 1 : -1;
+      d[6] == 1 ? (
+        set_param(k, v + t > d[2] ? d[1] : v + t < d[1] ? d[2] : v + t);
+      ) : (
+        set_param(k, v + t * ((mouse_cap & 8) || d[6] >= 2 ? d[3] : max(d[3], (d[2] - d[1]) / 100)));
+      );
+      mouse_wheel = 0;
+    );
+  );
+);
+
 // ---------- GUI helpers ----------
 function btn(x, y, w, h, label, active) local(hov, tw, th)
 (
@@ -569,17 +728,7 @@ function basename(src, dst) local(i, c)
 );
 
 @slider
-vol      = 10 ^ (slider17 / 20);
-velsens  = slider14 / 100;
-rel_inc  = 1 / max(1, slider16 * 0.001 * srate);
-fast_rel = 1 / max(1, 0.003 * srate);
-att_inc  = 1 / max(1, slider19 * 0.001 * srate);   // 0 ms -> instant
-rate_mul = 2 ^ ((slider21 + pb_val * slider22) / 12);
-endfade_len = max(1, 0.004 * srate);
-xf_inc   = 1 / max(1, slider24 * 0.001 * srate);
-slider9 < slider8 ? slider9 = slider8;
-redetect_pending = 1;
-redetect_t = blk_time;
+update_params();
 
 @block
 blk_time += samplesblock;
@@ -789,7 +938,7 @@ s_rd ? (
   file_var(0, s_t);
 );
 
-@gfx 760 380
+@gfx 900 600
 // ---------- colours & layout ----------
 gfx_clear = 0x1c1a18;
 gfx_setfont(1, "Arial", 14);
@@ -829,7 +978,8 @@ nfiles > 0 ? (
 );
 
 // ---------- waveform area ----------
-wx = 10; wy = 32; ww = max(50, gfx_w - 20); wh = max(40, gfx_h - wy - 66);
+PANEL_H = 18 + 7*22 + 8;
+wx = 10; wy = 32; ww = max(50, gfx_w - 20); wh = max(60, gfx_h - wy - 66 - PANEL_H);
 gfx_set(0.12, 0.12, 0.13, 1);
 gfx_rect(wx, wy, ww, wh);
 
@@ -935,16 +1085,41 @@ by = wy + wh + 8;
 btn(wx, by, 90, 22, "Re-detect", 0) ? req_redetect = 1;
 btn(wx + 98, by, 70, 22, "Clear", 0) ? req_clear = 1;
 btn(wx + 176, by, 120, 22, "Append on drop", append_mode) ? append_mode = !append_mode;
-btn(wx + 304, by, 150, 22,
-    slider6 == 0 ? "Mode: Sequential" : slider6 == 1 ? "Mode: Random" :
-    slider6 == 2 ? "Mode: No repeat" : "Mode: Key-mapped", 0) ? (
-  slider6 = (slider6 + 1) % 4;
-  slider_automate(slider6);
-  shuf_n = 0; rr_next = 0;
+
+// ---------- parameter panel ----------
+py = by + 32;
+g_colw = (ww - 3*14) / 4;
+g_c = 0;
+loop(4,
+  g_px = wx + g_c * (g_colw + 14);
+  gfx_set(0.95, 0.65, 0.2, 1);
+  gfx_x = g_px; gfx_y = py;
+  gfx_drawstr(590 + g_c);
+  gfx_set(0.95, 0.65, 0.2, 0.35);
+  gfx_line(g_px, py + 15, g_px + g_colw, py + 15);
+  g_row = 0; g_k = 0;
+  loop(NP,
+    g_d = PDEF + g_k*PF;
+    g_d[7] == g_c ? (
+      param_row(g_k, g_px, py + 20 + g_row*22, g_colw, 22);
+      g_row += 1;
+    );
+    g_k += 1;
+  );
+  g_c += 1;
 );
 
+// drag in progress (continues outside the control)
+g_drag > 0 ? (
+  (mouse_cap & 1) ? (
+    g_d = PDEF + (g_drag - 1)*PF;
+    set_param(g_drag - 1, g_dv0 + (mouse_x - g_dx0) / max(1, g_dw) * (g_d[2] - g_d[1]) * ((mouse_cap & 8) ? 0.1 : 1));
+  ) : g_drag = 0;
+);
+mouse_wheel = 0;
+
 gfx_set(0.55, 0.55, 0.6, 1);
-gfx_x = wx; gfx_y = by + 30;
-gfx_drawstr("Click: audition   Shift+click: add split   Alt+click: remove nearest split   Right-click: delete slice");
+gfx_x = wx; gfx_y = gfx_h - 18;
+gfx_drawstr("Waveform: click audition | Shift+click split | Alt+click remove split | Right-click delete.   Controls: drag/wheel, Shift fine, double/right-click default");
 
 g_lastcap = mouse_cap;
